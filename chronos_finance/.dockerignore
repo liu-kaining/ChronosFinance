@@ -1,0 +1,17 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+.env
+.venv
+venv
+*.egg-info
+dist
+build
+.mypy_cache
+.pytest_cache
+.coverage
+htmlcov
+*.log
+docker-compose.override.yml
