@@ -12,8 +12,11 @@ class StockUniverse(Base):
 
     symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
     company_name: Mapped[str | None] = mapped_column(String(255))
-    exchange: Mapped[str | None] = mapped_column(String(20), index=True)
-    exchange_short_name: Mapped[str | None] = mapped_column(String(20))
+    # stable returns full exchange names like "New York Stock Exchange" or
+    # "NASDAQ Global Select Market"; v3 only returned short codes. Keep both
+    # columns roomy so neither shape can blow up the insert.
+    exchange: Mapped[str | None] = mapped_column(String(64), index=True)
+    exchange_short_name: Mapped[str | None] = mapped_column(String(32))
     sector: Mapped[str | None] = mapped_column(String(100))
     industry: Mapped[str | None] = mapped_column(String(200))
     market_cap: Mapped[float | None]

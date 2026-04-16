@@ -153,7 +153,28 @@ class FMPClient:
 
         resp = await client.get(endpoint, **request_kwargs)
         resp.raise_for_status()
-        data = resp.json()
+
+        # Stable sometimes answers "no data available" with HTTP 200 + empty
+        # body (e.g. /economic-indicators for a series it doesn't track, or
+        # /financial-reports-json for a fiscal year not yet filed).
+        # Treat that as an empty list so the callers' `if not payload: continue`
+        # branches kick in instead of crashing `resp.json()` — which would
+        # otherwise trip tenacity into a retry storm on the exact same URL.
+        body = resp.content
+        if not body or not body.strip():
+            logger.debug("FMP %s returned empty body — coercing to []", endpoint)
+            return []
+
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            # Unparseable body (HTML error page, truncated JSON, etc.)
+            # — raise as a soft error so `_sync_per_symbol` marks it failed
+            # without flipping the flag, and tenacity will NOT retry because
+            # FMPResponseError is a logical (not transient) condition.
+            raise FMPResponseError(
+                f"FMP returned non-JSON body on {endpoint}: {body[:200]!r}"
+            ) from exc
 
         if _is_logical_error_payload(data):
             raise FMPResponseError(
