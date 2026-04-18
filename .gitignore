@@ -137,6 +137,8 @@ celerybeat.pid
 # Local DB dumps (Chronos Finance)
 chronos_finance/backups/
 chronos_finance/exports/
+chronos_finance/.chronos_data_campaign_initialized
+chronos_finance/full_sync_campaign.log
 
 # Environments
 .env
