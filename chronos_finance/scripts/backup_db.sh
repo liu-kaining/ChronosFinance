@@ -2,6 +2,7 @@
 # One-shot PostgreSQL backup for Chronos Finance (Docker Compose `db` service).
 #
 # Uses pg_dump inside the db container (no password needed on the Docker network).
+# For CSV slices of a single symbol, see scripts/export_symbol.sh.
 #
 # Usage:
 #   cd chronos_finance

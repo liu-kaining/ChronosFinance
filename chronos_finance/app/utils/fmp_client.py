@@ -106,8 +106,14 @@ class FMPClient:
         return self._client
 
     @retry(
+        # Only retry genuinely transient failures — transport errors and 5xx.
+        # FMPResponseError is raised on LOGICAL conditions (quota exhausted,
+        # "No Data", non-JSON body). Those will not improve with a retry and
+        # every retry still burns one rate-limiter slot, so we surface them
+        # immediately and let the caller decide (e.g. sec_filings treats
+        # "No Data" as skip-this-year, analysts raise for anything else).
         retry=retry_if_exception_type(
-            (httpx.HTTPStatusError, httpx.TransportError, FMPResponseError)
+            (httpx.HTTPStatusError, httpx.TransportError)
         ),
         wait=wait_exponential(multiplier=1, min=1, max=30),
         stop=stop_after_attempt(5),
@@ -123,8 +129,9 @@ class FMPClient:
         Issue a GET request to FMP.
 
         - Honours the rate limiter.
-        - Retries transient failures (transport/5xx) with exponential backoff.
-        - Retries FMP "soft errors" (HTTP 200 + error dict) too.
+        - Retries transient failures (transport errors, 5xx) with exponential backoff.
+        - Does NOT retry FMP "soft errors" (HTTP 200 + error dict) — they are
+          permanent-until-state-changes and callers expect them to surface fast.
         - `timeout_read`: override the per-request read timeout (seconds). Useful
           for endpoints that ship very large payloads (e.g. /financial-reports-json
           ~30MB 10-K blobs). Connect/write/pool timeouts stay at client defaults.
@@ -170,8 +177,8 @@ class FMPClient:
         except ValueError as exc:
             # Unparseable body (HTML error page, truncated JSON, etc.)
             # — raise as a soft error so `_sync_per_symbol` marks it failed
-            # without flipping the flag, and tenacity will NOT retry because
-            # FMPResponseError is a logical (not transient) condition.
+            # without flipping the flag. Tenacity will NOT retry this because
+            # FMPResponseError is excluded from the retry set above.
             raise FMPResponseError(
                 f"FMP returned non-JSON body on {endpoint}: {body[:200]!r}"
             ) from exc

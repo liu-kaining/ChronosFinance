@@ -780,7 +780,7 @@ def _macro_rows_from_treasury_entries(
             "series_id": series_id,
             "date": d,
             "value": _safe_float(raw),
-            "raw_payload": entry,
+            "raw_payload": _clean_jsonb(entry),
         })
     return _dedupe(rows, ("series_id", "date"))
 
@@ -841,7 +841,7 @@ async def sync_macro_indicators(series: Iterable[str] | None = None) -> dict:
                     "series_id": sid,
                     "date": d,
                     "value": _safe_float(entry.get("value")),
-                    "raw_payload": entry,
+                    "raw_payload": _clean_jsonb(entry),
                 })
             rows = _dedupe(rows, ("series_id", "date"))
 
@@ -851,13 +851,14 @@ async def sync_macro_indicators(series: Iterable[str] | None = None) -> dict:
 
         try:
             async with async_session_factory() as session:
-                stmt = pg_insert(MacroEconomic).values(rows)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=["series_id", "date"],
-                    set_={"value": stmt.excluded.value,
-                          "raw_payload": stmt.excluded.raw_payload},
-                )
-                await session.execute(stmt)
+                for chunk in _chunks(rows, BULK_CHUNK):
+                    stmt = pg_insert(MacroEconomic).values(list(chunk))
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=["series_id", "date"],
+                        set_={"value": stmt.excluded.value,
+                              "raw_payload": stmt.excluded.raw_payload},
+                    )
+                    await session.execute(stmt)
                 await session.commit()
         except Exception:
             logger.exception("Macro %s — DB write failed", sid)

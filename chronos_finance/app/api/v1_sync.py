@@ -150,6 +150,8 @@ async def trigger_segments_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
              description="Pulls /stock_peers?symbol= as a snapshot. Stored "
                          "under category peers_snapshot with the current "
                          "calendar year.")
+@router.post("/financials/peers", response_model=SyncTriggerResponse,
+             include_in_schema=False)
 async def trigger_peers_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
     bg.add_task(_run_job, "stock_peers", sync_stock_peers)
     return _accepted("Stock-peers sync queued.")
