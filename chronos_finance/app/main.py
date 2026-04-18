@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.v1_insight import router as insight_router
 from app.api.v1_sync import router as sync_router
 from app.core.config import get_settings
 from app.core.database import init_db
@@ -34,6 +35,7 @@ app = FastAPI(
 )
 
 app.include_router(sync_router)
+app.include_router(insight_router)
 
 
 @app.get("/health", tags=["ops"])

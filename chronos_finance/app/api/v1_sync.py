@@ -79,6 +79,8 @@ async def trigger_cashflow_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
              summary="Sync annual financial ratios",
              description="Pulls /ratios/{symbol} history (up to ~30 years) and "
                          "persists into static_financials (ratios_annual).")
+@router.post("/financials/ratios", response_model=SyncTriggerResponse,
+             include_in_schema=False)
 async def trigger_ratios_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
     bg.add_task(_run_job, "financial_ratios", sync_financial_ratios)
     return _accepted("Financial-ratios sync queued.")
@@ -88,6 +90,8 @@ async def trigger_ratios_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
              summary="Sync annual key metrics",
              description="Pulls /key-metrics/{symbol} history and persists into "
                          "static_financials (metrics_annual).")
+@router.post("/financials/metrics", response_model=SyncTriggerResponse,
+             include_in_schema=False)
 async def trigger_metrics_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
     bg.add_task(_run_job, "key_metrics", sync_key_metrics)
     return _accepted("Key-metrics sync queued.")
@@ -98,6 +102,8 @@ async def trigger_metrics_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
              description="Pulls /score?symbol= as a point-in-time snapshot. "
                          "Stored under category scores_snapshot with the "
                          "current calendar year.")
+@router.post("/financials/scores", response_model=SyncTriggerResponse,
+             include_in_schema=False)
 async def trigger_scores_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
     bg.add_task(_run_job, "financial_scores", sync_financial_scores)
     return _accepted("Financial-scores sync queued.")
@@ -107,6 +113,8 @@ async def trigger_scores_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
              summary="Sync annual enterprise values / market cap history",
              description="Pulls /enterprise-values/{symbol} history into "
                          "static_financials (enterprise_values_annual).")
+@router.post("/financials/enterprise-values", response_model=SyncTriggerResponse,
+             include_in_schema=False)
 async def trigger_ev_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
     bg.add_task(_run_job, "enterprise_values", sync_enterprise_values)
     return _accepted("Enterprise-values sync queued.")
@@ -117,6 +125,8 @@ async def trigger_ev_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
              description="Pulls /governance/executive_compensation per symbol. "
                          "Multiple executives in the same year are grouped into "
                          "one row whose raw_payload is a list of executives.")
+@router.post("/governance/compensation", response_model=SyncTriggerResponse,
+             include_in_schema=False)
 async def trigger_compensation_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
     bg.add_task(_run_job, "executive_compensation", sync_executive_compensation)
     return _accepted("Executive-compensation sync queued.")
@@ -128,6 +138,8 @@ async def trigger_compensation_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
                          "/revenue-geographic-segmentation per symbol and "
                          "stores them under distinct categories. The "
                          "segments_synced flag only flips once BOTH succeed.")
+@router.post("/financials/segments", response_model=SyncTriggerResponse,
+             include_in_schema=False)
 async def trigger_segments_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
     bg.add_task(_run_job, "revenue_segmentation", sync_revenue_segmentation)
     return _accepted("Revenue-segmentation sync queued.")

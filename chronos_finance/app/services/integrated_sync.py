@@ -145,6 +145,18 @@ def _clean_jsonb(obj: Any) -> Any:
     return obj
 
 
+def _sec_fmp_error_is_missing_filing(exc: BaseException) -> bool:
+    """
+    /financial-reports-json often returns HTTP 200 with
+    ``{"Error Message": "No Data for this symbol ..."}`` when the FY 10-K does
+    not exist yet (e.g. asking for FY 2026 in calendar 2026). Same as 404:
+    skip this year — do not abort the whole symbol.
+    """
+    if not isinstance(exc, FMPResponseError):
+        return False
+    return "no data" in str(exc).lower()
+
+
 # ══════════════════════════════════════════════════════════════
 # 4.1  Daily prices — bulk insert, ~7500 rows per symbol
 # ══════════════════════════════════════════════════════════════
@@ -349,14 +361,23 @@ async def sync_earnings_calendar() -> dict:
                 or entry.get("fiscalDate")
                 or entry.get("fiscalPeriodEnd")
             )
+            # stable /earnings uses epsActual / revenueActual; v3 used eps / revenue.
             rows.append({
                 "symbol": symbol,
                 "date": d,
                 "fiscal_period_end": _parse_date(fiscal_end),
-                "eps_estimated": _safe_float(entry.get("epsEstimated")),
-                "eps_actual": _safe_float(entry.get("eps")),
-                "revenue_estimated": _safe_float(entry.get("revenueEstimated")),
-                "revenue_actual": _safe_float(entry.get("revenue")),
+                "eps_estimated": _safe_float(
+                    entry.get("epsEstimated") or entry.get("eps_estimate")
+                ),
+                "eps_actual": _safe_float(
+                    entry.get("epsActual") or entry.get("eps")
+                ),
+                "revenue_estimated": _safe_float(
+                    entry.get("revenueEstimated") or entry.get("revenue_estimate")
+                ),
+                "revenue_actual": _safe_float(
+                    entry.get("revenueActual") or entry.get("revenue")
+                ),
                 "raw_payload": _clean_jsonb(entry),
             })
         rows = _dedupe(rows, ("symbol", "date"))
@@ -599,8 +620,11 @@ async def sync_sec_filings(years: int = 5, form_type: str = "10-K") -> dict:
     if total == 0:
         return {"dataset": "sec_filings", "total": 0, "synced": 0, "empty": 0, "failed": 0}
 
-    current_year = datetime.utcnow().year
-    year_list = list(range(current_year - years, current_year + 1))
+    # FY=Y 的 10-K 通常在日历年 Y+1 才公布；不要把 ``current_year`` 当作已可下载的 FY，
+    # 否则 FMP 对 FY=当年 返回 “No Data”，旧逻辑会当成致命错误整票失败。
+    cal_year = datetime.utcnow().year
+    last_completed_fy = cal_year - 1
+    year_list = list(range(last_completed_fy - years + 1, last_completed_fy + 1))
 
     synced = empty = 0
     failed: list[str] = []
@@ -621,9 +645,13 @@ async def sync_sec_filings(years: int = 5, form_type: str = "10-K") -> dict:
                     timeout_read=120.0,
                 )
             except FMPResponseError as e:
-                # FMP soft error (rate limit / invalid key / logical failure).
-                # Do NOT flip the flag; stop and mark this symbol failed so the
-                # next run retries cleanly.
+                if _sec_fmp_error_is_missing_filing(e):
+                    logger.debug(
+                        "[%d/%d] %s — no %s JSON for FY %d (FMP no-data), skip",
+                        idx, total, symbol, form_type, year,
+                    )
+                    continue
+                # Quota / bad key / other logical errors — do not flip flag.
                 logger.error(
                     "[%d/%d] %s — FMP soft error on %s %d: %s",
                     idx, total, symbol, form_type, year, e,
@@ -722,10 +750,50 @@ DEFAULT_MACRO_SERIES: tuple[str, ...] = (
 )
 
 
+def _treasury_field_for_series(series_id: str) -> str | None:
+    """Map legacy economic-indicator names to /treasury-rates JSON keys."""
+    if series_id == "10Year":
+        return "year10"
+    if series_id == "2Year":
+        return "year2"
+    return None
+
+
+def _macro_rows_from_treasury_entries(
+    entries: list[dict],
+    *,
+    json_field: str,
+    series_id: str,
+) -> list[dict]:
+    """Build macro_economics rows from one column of /treasury-rates."""
+    rows: list[dict] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        d = _parse_date(entry.get("date"))
+        if d is None:
+            continue
+        raw = entry.get(json_field)
+        if raw is None:
+            continue
+        rows.append({
+            "series_id": series_id,
+            "date": d,
+            "value": _safe_float(raw),
+            "raw_payload": entry,
+        })
+    return _dedupe(rows, ("series_id", "date"))
+
+
 async def sync_macro_indicators(series: Iterable[str] | None = None) -> dict:
     """
     Pulls each macro time series from FMP /economic-indicators and upserts into
     macro_economics. Not tied to the universe — one commit per series.
+
+    US 10Y / 2Y Treasury yields are **not** on /economic-indicators in stable
+    (that endpoint often returns an empty or non-JSON body for ``10Year`` /
+    ``2Year``). Those two series IDs are instead sourced from a single
+    ``GET /treasury-rates`` call (fields ``year10`` / ``year2``).
     """
     series_list = list(series) if series else list(DEFAULT_MACRO_SERIES)
     logger.info("Syncing %d macro series: %s", len(series_list), series_list)
@@ -733,27 +801,49 @@ async def sync_macro_indicators(series: Iterable[str] | None = None) -> dict:
     per_series: dict[str, int] = {}
     failed: list[str] = []
 
-    for sid in series_list:
-        logger.info("Macro — GET /economic-indicators?name=%s", sid)
-        try:
-            data = await fmp_client.get("/economic-indicators", params={"name": sid})
-        except Exception:
-            logger.exception("Macro %s — fetch failed", sid)
-            failed.append(sid)
-            continue
+    treasury_rates: list[dict] | None = None
+    treasury_fetch_ok: bool | None = None
 
-        rows: list[dict] = []
-        for entry in data if isinstance(data, list) else []:
-            d = _parse_date(entry.get("date"))
-            if d is None:
+    for sid in series_list:
+        tfield = _treasury_field_for_series(sid)
+        if tfield is not None:
+            if treasury_fetch_ok is None:
+                logger.info("Macro — GET /treasury-rates (10Y & 2Y yields)")
+                try:
+                    raw = await fmp_client.get("/treasury-rates")
+                    treasury_rates = raw if isinstance(raw, list) else []
+                    treasury_fetch_ok = True
+                except Exception:
+                    logger.exception("Macro treasury-rates — fetch failed")
+                    treasury_fetch_ok = False
+            if not treasury_fetch_ok:
+                failed.append(sid)
                 continue
-            rows.append({
-                "series_id": sid,
-                "date": d,
-                "value": _safe_float(entry.get("value")),
-                "raw_payload": entry,
-            })
-        rows = _dedupe(rows, ("series_id", "date"))
+            assert treasury_rates is not None
+            rows = _macro_rows_from_treasury_entries(
+                treasury_rates, json_field=tfield, series_id=sid
+            )
+        else:
+            logger.info("Macro — GET /economic-indicators?name=%s", sid)
+            try:
+                data = await fmp_client.get("/economic-indicators", params={"name": sid})
+            except Exception:
+                logger.exception("Macro %s — fetch failed", sid)
+                failed.append(sid)
+                continue
+
+            rows = []
+            for entry in data if isinstance(data, list) else []:
+                d = _parse_date(entry.get("date"))
+                if d is None:
+                    continue
+                rows.append({
+                    "series_id": sid,
+                    "date": d,
+                    "value": _safe_float(entry.get("value")),
+                    "raw_payload": entry,
+                })
+            rows = _dedupe(rows, ("series_id", "date"))
 
         if not rows:
             per_series[sid] = 0

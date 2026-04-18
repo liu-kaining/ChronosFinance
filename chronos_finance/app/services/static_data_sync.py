@@ -454,12 +454,20 @@ async def sync_executive_compensation() -> dict:
 
 
 # ── 3.6  Revenue segmentation (2 endpoints, 1 flag) ───────────
+# Stable returns rows like:
+#   {"symbol","fiscalYear","period","reportedCurrency","date","data": {...}}
+# Legacy v3 used date strings as keys:
+#   {"2023-09-30": {"iPhone": 1e9, ...}}
+_SEGMENTATION_META_KEYS = frozenset({
+    "symbol", "fiscalYear", "period", "reportedCurrency", "date", "data",
+    "cik", "filingDate", "acceptedDate",
+})
+
+
 def _segmentation_rows(data: Any) -> Iterable[dict]:
     """
-    FMP segmentation responses look like:
-      [ {"2023-09-30": {"iPhone": 200e9, "Mac": 40e9, ...}}, ... ]
-    Flatten each date-keyed entry into a normal row with `date`
-    and `segments` fields.
+    Normalise product/geo segmentation payloads into rows with `date`,
+    `calendarYear` (when known), and `segments` (the nested breakdown dict).
     """
     if not isinstance(data, list):
         return []
@@ -467,7 +475,25 @@ def _segmentation_rows(data: Any) -> Iterable[dict]:
     for item in data:
         if not isinstance(item, dict):
             continue
+        nested = item.get("data")
+        if isinstance(nested, dict) and nested:
+            fy = item.get("fiscalYear")
+            if fy is not None:
+                try:
+                    fy = int(fy)
+                except (TypeError, ValueError):
+                    fy = None
+            out.append({
+                "date": item.get("date"),
+                "calendarYear": fy,
+                "segments": nested,
+            })
+            continue
         for date_key, segments in item.items():
+            if date_key in _SEGMENTATION_META_KEYS:
+                continue
+            if not isinstance(segments, dict):
+                continue
             out.append({"date": date_key, "segments": segments})
     return out
 

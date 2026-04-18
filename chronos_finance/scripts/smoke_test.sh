@@ -62,18 +62,21 @@ SYNC_JOBS=(
 # Minimum rows expected in static_financials for each category × symbol.
 # Snapshot datasets have exactly 1 row per year per symbol, so threshold=1.
 # Annual history datasets should have at least 5 years of data.
-declare -A MIN_ROWS=(
-  [income_statement_annual]=5
-  [balance_sheet_annual]=5
-  [cash_flow_annual]=5
-  [ratios_annual]=5
-  [metrics_annual]=5
-  [enterprise_values_annual]=5
-  [scores_snapshot]=1
-  [peers_snapshot]=1
-  [executive_compensation]=1
-  [segments_product_annual]=1
-  [segments_geographic_annual]=1
+#
+# NOTE: use "category:threshold" lines — not `declare -A` — so the script
+# runs on macOS /bin/bash 3.2 (associative arrays require bash 4+).
+MIN_ROW_SPECS=(
+  "income_statement_annual:5"
+  "balance_sheet_annual:5"
+  "cash_flow_annual:5"
+  "ratios_annual:5"
+  "metrics_annual:5"
+  "enterprise_values_annual:5"
+  "scores_snapshot:1"
+  "peers_snapshot:1"
+  "executive_compensation:1"
+  "segments_product_annual:1"
+  "segments_geographic_annual:1"
 )
 
 log()  { printf "\033[1;36m[smoke]\033[0m %s\n" "$*"; }
@@ -232,8 +235,9 @@ SELECT symbol,
 log "Validating row-count thresholds …"
 any_fail=0
 for sym in "${SYMBOLS[@]}"; do
-  for category in "${!MIN_ROWS[@]}"; do
-    threshold=${MIN_ROWS[$category]}
+  for spec in "${MIN_ROW_SPECS[@]}"; do
+    category="${spec%%:*}"
+    threshold="${spec##*:}"
     actual=$(psql_exec -tA -c "
 SELECT COUNT(*) FROM static_financials
  WHERE symbol = '${sym}' AND data_category = '${category}';

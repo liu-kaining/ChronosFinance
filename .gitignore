@@ -134,6 +134,9 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# Local DB dumps (Chronos Finance)
+chronos_finance/backups/
+
 # Environments
 .env
 .envrc
