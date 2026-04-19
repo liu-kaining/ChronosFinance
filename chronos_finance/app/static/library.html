@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chronos 资料库</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <style>
+    :root {
+      --bg0: #0a0e14;
+      --bg1: #111820;
+      --panel: #141b26;
+      --panel2: #1a2332;
+      --border: #2a3441;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --up: #3fb950;
+      --down: #f85149;
+      --warn: #d29922;
+      --sidebar-w: 220px;
+      --top-h: 52px;
+      --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg0);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .topbar {
+      height: var(--top-h);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0 1rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--bg1) 0%, var(--bg0) 100%);
+    }
+    .brand {
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.04em;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .brand span { color: var(--muted); font-weight: 400; font-size: 0.75rem; margin-left: 0.35rem; }
+    .search-wrap { position: relative; flex: 1; max-width: 420px; min-width: 160px; }
+    .search-wrap input {
+      width: 100%; height: 34px; padding: 0 0.65rem;
+      border-radius: 6px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--text); font-size: 0.85rem;
+    }
+    .search-dd {
+      display: none; position: absolute; z-index: 100; left: 0; right: 0; top: calc(100% + 4px);
+      background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+      max-height: 300px; overflow: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+    }
+    .search-dd.open { display: block; }
+    .search-dd button {
+      display: block; width: 100%; text-align: left; padding: 0.5rem 0.75rem;
+      border: none; background: transparent; color: var(--text); cursor: pointer; font-size: 0.82rem;
+    }
+    .search-dd button:hover { background: #212a38; }
+    .search-dd .sym { font-family: var(--font-mono); font-weight: 600; color: var(--accent); }
+    .search-dd .co { color: var(--muted); font-size: 0.75rem; display: block; margin-top: 0.15rem; }
+    .top-links { margin-left: auto; display: flex; gap: 0.75rem; font-size: 0.8rem; color: var(--muted); }
+
+    .app-body { flex: 1; display: flex; min-height: 0; }
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: var(--bg1);
+      display: flex;
+      flex-direction: column;
+      padding: 0.5rem 0;
+    }
+    .sidebar .sym-head {
+      padding: 0.65rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: none;
+    }
+    .sidebar .sym-head.on { display: block; }
+    .sidebar .sym-head strong { font-family: var(--font-mono); font-size: 1rem; color: var(--text); display: block; }
+    .nav-group { padding: 0.35rem 0; }
+    .nav-group label {
+      display: block; padding: 0.35rem 0.85rem; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+    }
+    .nav-item {
+      display: block; width: 100%; text-align: left;
+      padding: 0.45rem 0.85rem 0.45rem 1rem;
+      border: none; background: transparent; color: var(--muted);
+      font-size: 0.82rem; cursor: pointer; border-left: 3px solid transparent;
+    }
+    .nav-item:hover { color: var(--text); background: rgba(88,166,255,0.06); }
+    .nav-item.on { color: var(--accent); border-left-color: var(--accent); background: rgba(88,166,255,0.08); }
+
+    .main { flex: 1; overflow: auto; padding: 1rem 1.25rem 2rem; }
+    .hero {
+      display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.75rem 1.5rem;
+      margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+    }
+    .hero h1 { margin: 0; font-size: 1.35rem; font-weight: 600; font-family: var(--font-mono); }
+    .hero .sub { color: var(--muted); font-size: 0.88rem; max-width: 900px; line-height: 1.45; }
+    .hero .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .tag { font-size: 0.72rem; padding: 0.2rem 0.45rem; border-radius: 4px; background: var(--panel2); border: 1px solid var(--border); color: var(--muted); }
+
+    .grid2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1rem; }
+    @media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
+    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+    @media (max-width: 900px) { .grid3 { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 1rem;
+    }
+    .card h3 {
+      margin: 0 0 0.65rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem; }
+    .kpi {
+      background: var(--bg0);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.65rem;
+    }
+    .kpi label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 0.2rem; }
+    .kpi .v { font-family: var(--font-mono); font-size: 1rem; font-weight: 600; }
+
+    .chart-box { width: 100%; height: 320px; }
+    .chart-box.lg { height: 460px; }
+    .chart-box.sm { height: 220px; }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.65rem; }
+    .toolbar button, .toolbar select {
+      height: 30px; padding: 0 0.65rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg0); color: var(--text);
+      font-size: 0.78rem; cursor: pointer;
+    }
+    .toolbar button.on { border-color: var(--accent); color: var(--accent); }
+    .toolbar select { min-width: 160px; }
+
+    table.data { width: 100%; border-collapse: collapse; font-size: 0.74rem; font-family: var(--font-mono); }
+    table.data th, table.data td { border: 1px solid var(--border); padding: 0.35rem 0.45rem; text-align: left; vertical-align: top; }
+    table.data th { background: #1c2533; color: var(--muted); font-weight: 500; position: sticky; top: 0; z-index: 1; }
+    .scroll-x { overflow-x: auto; max-width: 100%; }
+
+    .hint { color: var(--muted); font-size: 0.78rem; line-height: 1.5; margin: 0 0 0.65rem; }
+    .err { color: var(--down); font-size: 0.85rem; }
+    .welcome-screen { max-width: 720px; margin: 3rem auto; padding: 2rem; text-align: center; color: var(--muted); }
+    .welcome-screen h2 { color: var(--text); margin-top: 0; }
+    pre.raw { font-size: 0.7rem; overflow: auto; max-height: 55vh; background: var(--bg0); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); }
+
+    .subtabs { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.75rem; }
+    .subtabs button { padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg0); color: var(--muted); cursor: pointer; }
+    .subtabs button.on { color: var(--accent); border-color: var(--accent); }
+
+    .timeline { border-left: 2px solid var(--border); margin-left: 0.5rem; padding-left: 1rem; }
+    .timeline .ev { margin-bottom: 0.85rem; position: relative; }
+    .timeline .ev::before {
+      content: ""; position: absolute; left: -1.35rem; top: 0.25rem;
+      width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg0);
+    }
+    .timeline .ev .d { font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); }
+    .timeline .ev .b { font-size: 0.82rem; margin-top: 0.15rem; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">CHRONOS <span>资料库 · 只读</span></div>
+    <div class="search-wrap">
+      <input type="text" id="q" placeholder="代码前缀搜索，如 NVDA、BABA…" autocomplete="off" />
+      <div class="search-dd" id="dd"></div>
+    </div>
+    <div class="top-links"><a href="/ui">运营看板</a> · <a href="/docs" target="_blank" rel="noopener">OpenAPI</a></div>
+  </header>
+
+  <div class="app-body">
+    <aside class="sidebar" id="sidebar">
+      <div class="sym-head" id="sym-head"><strong id="sh-sym">—</strong><span id="sh-co"></span></div>
+      <div class="nav-group">
+        <label>总览</label>
+        <button type="button" class="nav-item on" data-view="dashboard">大屏概览</button>
+      </div>
+      <div class="nav-group">
+        <label>市场</label>
+        <button type="button" class="nav-item" data-view="market">行情 &amp; K 线</button>
+      </div>
+      <div class="nav-group">
+        <label>财务</label>
+        <button type="button" class="nav-item" data-view="financials">财务报表</button>
+      </div>
+      <div class="nav-group">
+        <label>事件</label>
+        <button type="button" class="nav-item" data-view="events">财报 / 分红 / 内幕</button>
+      </div>
+      <div class="nav-group">
+        <label>研究</label>
+        <button type="button" class="nav-item" data-view="analyst">一致预期</button>
+        <button type="button" class="nav-item" data-view="sec">SEC 结构化</button>
+      </div>
+      <div class="nav-group">
+        <label>调试</label>
+        <button type="button" class="nav-item" data-view="raw">原始 JSON</button>
+      </div>
+    </aside>
+
+    <main class="main" id="view-root">
+      <div class="welcome-screen" id="welcome">
+        <h2>选择标的开始</h2>
+        <p>在顶部搜索框输入<strong>股票代码前缀</strong>，从下拉列表中选择。左侧为模块导航；所有数据来自本地已同步表，<strong>不会修改任何数据</strong>。</p>
+        <p style="font-size:0.75rem">路由示例：<code style="color:var(--accent)">#/NVDA/dashboard</code> · <code style="color:var(--accent)">#/BABA/market</code></p>
+      </div>
+    </main>
+  </div>
+
+  <script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const WELCOME_HTML = $("welcome") ? $("welcome").outerHTML : "";
+  let sym = "";
+  let view = "dashboard";
+  let searchTimer = null;
+  const charts = {};
+
+  function disposeChart(k) {
+    if (charts[k]) { try { charts[k].dispose(); } catch (e) {} charts[k] = null; }
+  }
+  function disposeAllCharts() {
+    Object.keys(charts).forEach(disposeChart);
+  }
+  if (!window.__chronosLibResize) {
+    window.__chronosLibResize = true;
+    window.addEventListener("resize", () => {
+      Object.keys(charts).forEach((k) => { try { charts[k] && charts[k].resize(); } catch (e) {} });
+    });
+  }
+
+  async function api(path) {
+    const r = await fetch(path, { headers: { Accept: "application/json" } });
+    if (!r.ok) throw new Error((await r.text()).slice(0, 500));
+    return r.json();
+  }
+
+  function esc(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+
+  function parseHash() {
+    const h = (location.hash || "").replace(/^#\/?/, "").trim();
+    if (!h) { sym = ""; view = ""; return; }
+    const parts = h.split("/").filter(Boolean);
+    if (!parts.length) { sym = ""; view = ""; return; }
+    sym = parts[0].toUpperCase().replace(/[^A-Z0-9.\-]/g, "");
+    view = (parts[1] || "dashboard").toLowerCase().replace(/[^a-z0-9\-]/g, "") || "dashboard";
+  }
+
+  function setHash(s, v) {
+    sym = s.toUpperCase();
+    view = v || "dashboard";
+    location.hash = "/" + sym + "/" + view;
+  }
+
+  function syncNavUI() {
+    document.querySelectorAll(".nav-item").forEach((b) => {
+      b.classList.toggle("on", b.dataset.view === view);
+    });
+    const sh = $("sym-head");
+    if (sym) {
+      sh.classList.add("on");
+      $("sh-sym").textContent = sym;
+    } else {
+      sh.classList.remove("on");
+    }
+  }
+
+  async function render() {
+    parseHash();
+    syncNavUI();
+    const root = $("view-root");
+    disposeAllCharts();
+
+    if (!sym) {
+      $("sidebar").querySelectorAll(".sym-head").forEach((el) => el.classList.remove("on"));
+      root.innerHTML = WELCOME_HTML;
+      return;
+    }
+
+    $("sym-head").classList.add("on");
+    $("q").value = sym;
+
+    try {
+      if (view === "dashboard") await renderDashboard(root);
+      else if (view === "market") await renderMarket(root);
+      else if (view === "financials") await renderFinancials(root);
+      else if (view === "events") await renderEvents(root);
+      else if (view === "analyst") await renderAnalyst(root);
+      else if (view === "sec") await renderSec(root);
+      else if (view === "raw") await renderRaw(root);
+      else await renderDashboard(root);
+    } catch (e) {
+      root.innerHTML = '<div class="card"><p class="err">' + esc(e.message || e) + "</p></div>";
+    }
+  }
+
+  async function loadInventory() {
+    return api("/api/v1/data/symbols/" + encodeURIComponent(sym) + "/inventory");
+  }
+
+  async function renderDashboard(root) {
+    const inv = await loadInventory();
+    const u = inv.universe || {};
+    $("sh-co").textContent = u.company_name ? " · " + u.company_name : "";
+
+    const flags = u && typeof u === "object" ? Object.keys(u).filter((k) => k.endsWith("_synced")) : [];
+    const radarInd = flags.map((k) => ({ name: k.replace(/_synced$/, "").replace(/_/g, " "), max: 1 }));
+    const radarVal = flags.map((k) => (u[k] ? 1 : 0));
+
+    const prices = await api("/api/v1/library/symbols/" + encodeURIComponent(sym) + "/prices?limit=260&order=asc");
+    const pitems = prices.items || [];
+    const dates = pitems.map((x) => x.date);
+    const closes = pitems.map((x) => x.adj_close ?? x.close ?? null);
+
+    const earnings = await api("/api/v1/library/symbols/" + encodeURIComponent(sym) + "/earnings?limit=80");
+    const erItems = (earnings.items || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const erDates = erItems.map((r) => r.date);
+    const epsA = erItems.map((r) => (r.eps_actual != null ? Number(r.eps_actual) : null));
+
+    const sub = [u.exchange_short_name || u.exchange, u.sector, u.industry, u.market_cap != null ? "市值 " + fmtCap(u.market_cap) : ""].filter(Boolean).join(" · ");
+
+    let kpis = "";
+    if (inv.daily_prices) {
+      kpis += kpi("日线条数", inv.daily_prices.rows);
+      kpis += kpi("日线区间", (inv.daily_prices.date_min || "—") + " → " + (inv.daily_prices.date_max || "—"));
+    }
+    kpis += kpi("静态财务行", (inv.static_financials || []).reduce((s, x) => s + (x.rows || 0), 0));
+    kpis += kpi("财报日历", inv.earnings_calendar ? inv.earnings_calendar.rows : "—");
+    kpis += kpi("内幕条数", inv.insider_trades ? inv.insider_trades.rows : "—");
+    kpis += kpi("SEC 文件", (inv.sec_filings || []).reduce((s, x) => s + (x.rows || 0), 0));
+
+    root.innerHTML =
+      '<div class="hero"><h1>' + esc(sym) + '</h1><div class="sub">' + esc(sub) + '</div></div>' +
+      '<div class="grid2">' +
+      '<div class="card"><h3>价格走势（约一年）</h3><div id="c-mini" class="chart-box sm"></div></div>' +
+      '<div class="card"><h3>数据同步覆盖（雷达）</h3><p class="hint">每个维度已同步为 1，未同步为 0；仅表示任务是否跑完，不表示业务「好坏」。</p><div id="c-radar" class="chart-box sm"></div></div>' +
+      "</div>" +
+      '<div class="card"><h3>库内规模速览</h3><div class="kpi-row">' + kpis + "</div></div>" +
+      '<div class="card"><h3>最近实际 EPS（财报日）</h3><div id="c-epsmini" class="chart-box sm"></div></div>';
+
+    charts.mini = echarts.init($("c-mini"));
+    charts.mini.setOption({
+      backgroundColor: "transparent",
+      grid: { left: 40, right: 16, top: 16, bottom: 28 },
+      xAxis: { type: "category", data: dates, axisLabel: { color: "#8b949e", fontSize: 9, interval: Math.floor(dates.length / 8) } },
+      yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#2a3441" } }, axisLabel: { color: "#8b949e", fontSize: 9 } },
+      series: [{ type: "line", data: closes, smooth: true, showSymbol: false, lineStyle: { color: "#58a6ff", width: 1.5 } }],
+      tooltip: { trigger: "axis" },
+    });
+
+    charts.radar = echarts.init($("c-radar"));
+    charts.radar.setOption({
+      backgroundColor: "transparent",
+      radar: { indicator: radarInd, splitLine: { lineStyle: { color: "#2a3441" } }, axisName: { color: "#8b949e", fontSize: 9 } },
+      series: [{ type: "radar", data: [{ value: radarVal, name: "synced" }], areaStyle: { opacity: 0.15 }, lineStyle: { color: "#58a6ff" } }],
+    });
+
+    charts.epsm = echarts.init($("c-epsmini"));
+    charts.epsm.setOption({
+      backgroundColor: "transparent",
+      grid: { left: 44, right: 12, top: 12, bottom: 36 },
+      xAxis: { type: "category", data: erDates, axisLabel: { rotate: 35, color: "#8b949e", fontSize: 9 } },
+      yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#2a3441" } }, axisLabel: { color: "#8b949e", fontSize: 9 } },
+      series: [{ type: "bar", data: epsA, itemStyle: { color: "#3fb950" }, name: "EPS actual" }],
+      tooltip: { trigger: "axis" },
+    });
+  }
+
+  function kpi(label, v) {
+    return '<div class="kpi"><label>' + esc(label) + '</label><div class="v">' + esc(String(v)) + "</div></div>";
+  }
+
+  function fmtCap(n) {
+    if (n >= 1e12) return (n / 1e12).toFixed(2) + "T";
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    return String(n);
+  }
+
+  let priceLimit = 1500;
+  let showMA = true;
+
+  async function renderMarket(root) {
+    const inv = await loadInventory();
+    const u = inv.universe || {};
+    $("sh-co").textContent = u.company_name ? " · " + u.company_name : "";
+    const sub = [u.exchange_short_name || u.exchange, u.sector].filter(Boolean).join(" · ");
+
+    root.innerHTML =
+      '<div class="hero"><h1>' + esc(sym) + '</h1><div class="sub">' + esc(sub) + " · 专业行情视图</div></div>" +
+      '<div class="card"><h3>日线 · K 线 + 成交量</h3>' +
+      '<div class="toolbar">' +
+      '<span class="hint" style="margin:0">区间：</span>' +
+      '<button type="button" data-lim="252">1Y</button><button type="button" data-lim="756">3Y</button><button type="button" data-lim="1500">~6Y</button><button type="button" data-lim="5000">MAX</button>' +
+      '<span style="width:1rem"></span>' +
+      '<button type="button" id="btn-ma">均线 MA20</button>' +
+      "</div>" +
+      '<div id="c-k" class="chart-box lg"></div></div>';
+
+    root.querySelectorAll(".toolbar button[data-lim]").forEach((b) => {
+      b.addEventListener("click", () => {
+        priceLimit = parseInt(b.dataset.lim, 10);
+        root.querySelectorAll(".toolbar button[data-lim]").forEach((x) => x.classList.remove("on"));
+        b.classList.add("on");
+        paintK(root);
+      });
+    });
+    root.querySelector('.toolbar button[data-lim="1500"]').classList.add("on");
+
+    $("btn-ma").addEventListener("click", () => {
+      showMA = !showMA;
+      $("btn-ma").classList.toggle("on", showMA);
+      $("btn-ma").textContent = showMA ? "均线 MA20 · 开" : "均线 MA20 · 关";
+      paintK(root);
+    });
+    $("btn-ma").classList.add("on");
+
+    async function paintK() {
+      const d = await api("/api/v1/library/symbols/" + encodeURIComponent(sym) + "/prices?limit=" + priceLimit + "&order=asc");
+      const items = d.items || [];
+      const cat = items.map((x) => x.date);
+      const kdata = items.map((x) => [x.open, x.close, x.low, x.high]);
+      const vol = items.map((x) => x.volume || 0);
+      const closes = items.map((x) => x.adj_close ?? x.close ?? null);
+      const ma20 = maSeries(closes, 20);
+
+      disposeChart("k");
+      charts.k = echarts.init($("c-k"));
+      const series = [
+        { type: "candlestick", name: "OHLC", data: kdata, itemStyle: { color: "#3fb950", color0: "#f85149", borderColor: "#3fb950", borderColor0: "#f85149" } },
+        { type: "bar", name: "Volume", xAxisIndex: 0, yAxisIndex: 1, data: vol, itemStyle: { color: "rgba(139,148,158,0.35)" } },
+      ];
+      if (showMA) {
+        series.push({ type: "line", name: "MA20", data: ma20, smooth: true, showSymbol: false, lineStyle: { width: 1, color: "#d29922" }, yAxisIndex: 0 });
+      }
+      charts.k.setOption({
+        backgroundColor: "transparent",
+        animation: false,
+        legend: { data: showMA ? ["OHLC", "Volume", "MA20"] : ["OHLC", "Volume"], textStyle: { color: "#8b949e", fontSize: 10 }, top: 0 },
+        tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+        axisPointer: { link: [{ xAxisIndex: "all" }] },
+        grid: [{ left: 56, right: 48, top: 36, height: "52%" }, { left: 56, right: 48, top: "68%", height: "22%" }],
+        xAxis: [
+          { type: "category", data: cat, boundaryGap: true, axisLine: { lineStyle: { color: "#2a3441" } }, axisLabel: { color: "#8b949e", fontSize: 9 } },
+          { type: "category", data: cat, gridIndex: 1, boundaryGap: true, axisLine: { lineStyle: { color: "#2a3441" } }, axisLabel: { show: false } },
+        ],
+        yAxis: [
+          { scale: true, splitLine: { lineStyle: { color: "#2a3441" } }, axisLabel: { color: "#8b949e", fontSize: 9 } },
+          { scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { show: false }, splitLine: { show: false } },
+        ],
+        dataZoom: [{ type: "inside", xAxisIndex: [0, 1], start: 70, end: 100 }, { type: "slider", xAxisIndex: [0, 1], start: 70, end: 100, bottom: 4, height: 18 }],
+        series: [
+          Object.assign({}, series[0], { xAxisIndex: 0, yAxisIndex: 0 }),
+          Object.assign({}, series[1], { xAxisIndex: 1, yAxisIndex: 1 }),
+        ].concat(showMA ? [Object.assign({}, series[2], { xAxisIndex: 0, yAxisIndex: 0 })] : []),
+      });
+    }
+    await paintK();
+  }
+
+  function maSeries(arr, n) {
+    return arr.map((_, i) => {
+      if (i < n - 1) return null;
+      let s = 0,
+        c = 0;
+      for (let j = i - n + 1; j <= i; j++) {
+        if (arr[j] != null && !isNaN(arr[j])) {
+          s += arr[j];
+          c++;
+        }
+      }
+      return c ? s / c : null;
+    });
+  }
+
+  const FIN_PRESETS = [
+    { key: "income_statement_annual", label: "利润表（年）" },
+    { key: "balance_sheet_annual", label: "资产负债表（年）" },
+    { key: "cash_flow_annual", label: "现金流量表（年）" },
+    { key: "metrics_annual", label: "关键指标（年）" },
+    { key: "ratios_annual", label: "财务比率（年）" },
+  ];
+
+  async function renderFinancials(root) {
+    const inv = await loadInventory();
+    const u = inv.universe || {};
+    $("sh-co").textContent = u.company_name ? " · " + u.company_name : "";
+
+    let subt = FIN_PRESETS.map(
+      (p, i) => '<button type="button" class="' + (i === 0 ? "on" : "") + '" data-cat="' + esc(p.key) + '">' + esc(p.label) + "</button>"
+    ).join("");
+
+    root.innerHTML =
+      '<div class="hero"><h1>' + esc(sym) + '</h1><div class="sub">财务报表 · 原始 FMP 字段透视</div></div>' +
+      '<div class="card"><div class="subtabs" id="fin-sub">' + subt + '</div>' +
+      '<p class="hint">下图自动从每行 <code>raw_payload</code> 中提取常见数值字段（revenue、netIncome、grossProfit 等）；表格展示完整列。</p>' +
+      '<div id="c-fin" class="chart-box"></div>' +
+      '<div id="fin-table" class="scroll-x"></div></div>';
+
+    let currentCat = FIN_PRESETS[0].key;
+
+    async function loadFin(cat) {
+      currentCat = cat;
+      const s = await api(
+        "/api/v1/library/symbols/" + encodeURIComponent(sym) + "/static?category=" + encodeURIComponent(cat) + "&period=annual&limit=120"
+      );
+      const items = s.items || [];
+      const chrono = items.slice().sort((a, b) => (a.fiscal_year || 0) - (b.fiscal_year || 0));
+      const fy = chrono.map((r) => String(r.fiscal_year));
+      const pick = extractFinancialSeries(chrono);
+      $("fin-table").innerHTML = renderStaticTable(items);
+
+      disposeChart("fin");
+      charts.fin = echarts.init($("c-fin"));
+      const ser = [];
+      pick.series.forEach((p) => {
+        ser.push({ name: p.name, type: "line", smooth: true, showSymbol: fy.length < 24, data: p.data });
+      });
+      charts.fin.setOption({
+        backgroundColor: "transparent",
+        legend: { type: "scroll", textStyle: { color: "#8b949e", fontSize: 10 }, top: 0 },
+        tooltip: { trigger: "axis" },
+        grid: { left: 52, right: 24, top: 40, bottom: 48 },
+        xAxis: { type: "category", data: fy, axisLabel: { color: "#8b949e" } },
+        yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#2a3441" } }, axisLabel: { color: "#8b949e", formatter: (v) => (Math.abs(v) >= 1e9 ? (v / 1e9).toFixed(1) + "B" : v)) } },
+        series: ser,
+      });
+    }
+
+    $("fin-sub").querySelectorAll("button").forEach((b) => {
+      b.addEventListener("click", () => {
+        $("fin-sub").querySelectorAll("button").forEach((x) => x.classList.remove("on"));
+        b.classList.add("on");
+        loadFin(b.dataset.cat);
+      });
+    });
+    await loadFin(currentCat);
+  }
+
+  function extractFinancialSeries(items) {
+    const keys = [
+      "revenue",
+      "netIncome",
+      "grossProfit",
+      "operatingIncome",
+      "ebitda",
+      "totalAssets",
+      "totalDebt",
+      "operatingCashFlow",
+    ];
+    const found = [];
+    keys.forEach((k) => {
+      const data = items.map((r) => numFromPayload(r.raw_payload, k));
+      if (data.some((v) => v != null)) found.push({ name: k, data });
+    });
+    if (!found.length) {
+      const allKeys = new Set();
+      items.forEach((r) => Object.keys(r.raw_payload || {}).forEach((k) => allKeys.add(k)));
+      Array.from(allKeys)
+        .sort()
+        .slice(0, 6)
+        .forEach((k) => {
+          const data = items.map((r) => numFromPayload(r.raw_payload, k));
+          if (data.some((v) => v != null)) found.push({ name: k, data });
+        });
+    }
+    return { series: found.slice(0, 8) };
+  }
+
+  function numFromPayload(obj, k) {
+    if (!obj || obj[k] == null) return null;
+    const v = obj[k];
+    if (typeof v === "number" && !isNaN(v)) return v;
+    const n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+
+  function renderStaticTable(items) {
+    if (!items.length) return '<p class="hint">无数据</p>';
+    const keys = new Set();
+    items.forEach((row) => Object.keys(row.raw_payload || {}).forEach((k) => keys.add(k)));
+    const cols = ["fiscal_year", ...Array.from(keys).sort()];
+    const th = "<tr>" + cols.map((c) => "<th>" + esc(c) + "</th>").join("") + "</tr>";
+    const tb = items
+      .map((row) => {
+        return (
+          "<tr>" +
+          cols
+            .map((c) => {
+              if (c === "fiscal_year") return "<td><b>" + row.fiscal_year + "</b></td>";
+              const v = row.raw_payload[c];
+              if (v == null) return "<td>—</td>";
+              if (typeof v === "object") return "<td><code>" + esc(JSON.stringify(v)) + "</code></td>";
+              return "<td>" + esc(String(v)) + "</td>";
+            })
+            .join("") +
+          "</tr>"
+        );
+      })
+      .join("");
+    return '<table class="data"><thead>' + th + "</thead><tbody>" + tb + "</tbody></table>";
+  }
+
+  async function renderEvents(root) {
+    const inv = await loadInventory();
+    const u = inv.universe || {};
+    $("sh-co").textContent = u.company_name ? " · " + u.company_name : "";
+
+    const [er, ca, ins] = await Promise.all([
+      api("/api/v1/library/symbols/" + encodeURIComponent(sym) + "/earnings?limit=120"),
+      api("/api/v1/library/symbols/" + encodeURIComponent(sym) + "/corporate-actions?limit=200"),
+      api("/api/v1/library/symbols/" + encodeURIComponent(sym) + "/insider?limit=120"),
+    ]);
+
+    const erItems = er.items || [];
+    const sorted = erItems.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const erDates = sorted.map((r) => r.date);
+    const epsE = sorted.map((r) => (r.eps_estimated != null ? Number(r.eps_estimated) : null));
+    const epsA = sorted.map((r) => (r.eps_actual != null ? Number(r.eps_actual) : null));
+    const revE = sorted.map((r) => (r.revenue_estimated != null ? Number(r.revenue_estimated) : null));
+    const revA = sorted.map((r) => (r.revenue_actual != null ? Number(r.revenue_actual) : null));
+
+    let erTb =
+      "<tr><th>日期</th><th>财年截止</th><th>EPS预</th><th>EPS实</th><th>营收预</th><th>营收实</th></tr>" +
+      erItems
+        .map(
+          (r) =>
+            "<tr><td>" +
+            r.date +
+            "</td><td>" +
+            (r.fiscal_period_end || "—") +
+            "</td><td>" +
+            escNum(r.eps_estimated) +
+            "</td><td>" +
+            escNum(r.eps_actual) +
+            "</td><td>" +
+            escNum(r.revenue_estimated) +
+            "</td><td>" +
+            escNum(r.revenue_actual) +
+            "</td></tr>"
+        )
+        .join("");
+
+    let caTb =
+      "<tr><th>类型</th><th>日期</th><th>摘要</th></tr>" +
+      (ca.items || [])
+        .map((r) => {
+          const sum = summarizeCorp(r.raw_payload);
+          return "<tr><td>" + esc(r.action_type) + "</td><td>" + r.action_date + "</td><td>" + esc(sum) + "</td></tr>";
+        })
+        .join("");
+
+    let insTb =
+      "<tr><th>申报日</th><th>成交日</th><th>姓名</th><th>类型</th><th>股数</th><th>价</th></tr>" +
+      (ins.items || [])
+        .map(
+          (r) =>
+            "<tr><td>" +
+            esc(r.filing_date || "—") +
+            "</td><td>" +
+            esc(r.transaction_date || "—") +
+            "</td><td>" +
+            esc(r.reporting_name || "") +
+            "</td><td>" +
+            esc(r.transaction_type || "") +
+            "</td><td>" +
+            escNum(r.securities_transacted) +
+            "</td><td>" +
+            escNum(r.price) +
+            "</td></tr>"
+        )
+        .join("");
+
+    let tl = (ca.items || [])
+      .slice(0, 12)
+      .map((r) => {
+        return (
+          '<div class="ev"><div class="d">' +
+          esc(r.action_date) +
+          '</div><div class="b">' +
+          esc(r.action_type) +
+          " · " +
+          esc(summarizeCorp(r.raw_payload)) +
+          "</div></div>"
+        );
+      })
+      .join("");
+
+    root.innerHTML =
+      '<div class="hero"><h1>' + esc(sym) + '</h1><div class="sub">事件中心 · 财报、公司行为、内幕</div></div>' +
+      '<div class="card"><h3>EPS / 营收（发布日时间轴）</h3><div id="c-erev" class="chart-box"></div></div>' +
+      '<div class="grid2">' +
+      '<div class="card"><h3>公司行为时间线（节选）</h3><div class="timeline">' +
+      tl +
+      "</div></div>" +
+      '<div class="card"><h3>内幕交易（最近）</h3><div class="scroll-x"><table class="data">' +
+      insTb +
+      "</table></div></div>" +
+      "</div>" +
+      '<div class="card"><h3>财报日历明细</h3><div class="scroll-x"><table class="data">' + erTb + "</table></div></div>" +
+      '<div class="card"><h3>公司行为明细</h3><div class="scroll-x"><table class="data">' + caTb + "</table></div></div>";
+
+    charts.erev = echarts.init($("c-erev"));
+    charts.erev.setOption({
+      backgroundColor: "transparent",
+      tooltip: {
+        trigger: "axis",
+        formatter: function (params) {
+          if (!params || !params.length) return "";
+          let h = params[0].axisValue + "<br/>";
+          params.forEach(function (p) {
+            let t = p.data;
+            if (typeof t === "number" && (p.seriesName || "").indexOf("营收") >= 0) t = (t / 1e9).toFixed(2) + " B USD";
+            h += p.marker + p.seriesName + ": " + (t == null ? "—" : t) + "<br/>";
+          });
+          return h;
+        },
+      },
+      legend: { data: ["EPS预期", "EPS实际", "营收预期", "营收实际"], textStyle: { color: "#8b949e", fontSize: 10 } },
+      grid: { left: 52, right: 56, top: 32, bottom: 56 },
+      xAxis: { type: "category", data: erDates, axisLabel: { rotate: 30, color: "#8b949e", fontSize: 9 } },
+      yAxis: [
+        { type: "value", name: "EPS", scale: true, splitLine: { lineStyle: { color: "#2a3441" } }, axisLabel: { color: "#8b949e" } },
+        { type: "value", name: "营收", scale: true, splitLine: { show: false }, axisLabel: { color: "#8b949e", formatter: (v) => (Math.abs(v) >= 1e9 ? (v / 1e9).toFixed(0) + "B" : v)) } },
+      ],
+      series: [
+        { name: "EPS预期", type: "line", yAxisIndex: 0, data: epsE, lineStyle: { type: "dashed", color: "#d29922" } },
+        { name: "EPS实际", type: "line", yAxisIndex: 0, data: epsA, lineStyle: { width: 2, color: "#58a6ff" } },
+        { name: "营收预期", type: "line", yAxisIndex: 1, data: revE, lineStyle: { type: "dashed", color: "#8b949e" }, showSymbol: false },
+        { name: "营收实际", type: "line", yAxisIndex: 1, data: revA, lineStyle: { width: 2, color: "#3fb950" }, showSymbol: false },
+      ],
+    });
+  }
+
+  function escNum(n) {
+    if (n == null || n === "") return "—";
+    return esc(String(n));
+  }
+
+  function summarizeCorp(p) {
+    if (!p || typeof p !== "object") return "";
+    if (p.adjDividend != null) return "div " + String(p.adjDividend);
+    if (p.numerator != null && p.denominator != null) return "split " + p.numerator + ":" + p.denominator;
+    return JSON.stringify(p).slice(0, 80);
+  }
+
+  async function renderAnalyst(root) {
+    const inv = await loadInventory();
+    const u = inv.universe || {};
+    $("sh-co").textContent = u.company_name ? " · " + u.company_name : "";
+    const d = await api("/api/v1/library/symbols/" + encodeURIComponent(sym) + "/analyst-estimates?limit=400");
+
+    const rows = d.items || [];
+    const byKind = {};
+    rows.forEach((r) => {
+      if (!byKind[r.kind]) byKind[r.kind] = [];
+      byKind[r.kind].push(r);
+    });
+
+    let tb =
+      "<tr><th>kind</th><th>ref_date</th><th>published</th><th>payload 摘要</th></tr>" +
+      rows
+        .map((r) => {
+          const sum = JSON.stringify(r.raw_payload || {}).slice(0, 120);
+          return "<tr><td>" + esc(r.kind) + "</td><td>" + esc(r.ref_date || "—") + "</td><td>" + esc(r.published_date || "—") + "</td><td><code>" + esc(sum) + "</code></td></tr>";
+        })
+        .join("");
+
+    const cons = rows.filter((r) => r.kind && r.kind.indexOf("consensus") >= 0 && r.ref_date);
+    cons.sort((a, b) => String(a.ref_date).localeCompare(String(b.ref_date)));
+    let chartCard = "";
+    if (cons.length) {
+      chartCard =
+        '<div class="card"><h3>一致预期 EPS（estimatedEpsAvg / epsAvg）</h3><div id="c-an" class="chart-box sm"></div></div>';
+    }
+
+    root.innerHTML =
+      '<div class="hero"><h1>' + esc(sym) + '</h1><div class="sub">卖方一致预期与目标价（原始结构）</div></div>' +
+      '<div class="card"><h3>按 kind 分组计数</h3><div class="kpi-row">' +
+      Object.keys(byKind)
+        .map((k) => kpi(k, byKind[k].length))
+        .join("") +
+      "</div></div>" +
+      chartCard +
+      '<div class="card"><h3>明细表</h3><div class="scroll-x"><table class="data">' + tb + "</table></div></div>";
+
+    if (cons.length) {
+      const dates = cons.map((r) => r.ref_date);
+      const eps = cons.map((r) => numFromPayload(r.raw_payload, "estimatedEpsAvg") ?? numFromPayload(r.raw_payload, "epsAvg"));
+      charts.an = echarts.init($("c-an"));
+      charts.an.setOption({
+        backgroundColor: "transparent",
+        grid: { left: 48, right: 16, top: 24, bottom: 36 },
+        xAxis: { type: "category", data: dates, axisLabel: { color: "#8b949e", fontSize: 9, rotate: 30 } },
+        yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#2a3441" } }, axisLabel: { color: "#8b949e" } },
+        series: [{ type: "line", data: eps, smooth: true, showSymbol: dates.length < 30, lineStyle: { color: "#58a6ff" } }],
+        tooltip: { trigger: "axis" },
+      });
+    }
+  }
+
+  async function renderSec(root) {
+    const inv = await loadInventory();
+    const u = inv.universe || {};
+    $("sh-co").textContent = u.company_name ? " · " + u.company_name : "";
+    const d = await api("/api/v1/library/symbols/" + encodeURIComponent(sym) + "/sec-filings?limit=80");
+    let tb =
+      "<tr><th>id</th><th>类型</th><th>财年</th><th>期间</th><th>申报日</th><th>JSON顶层keys</th></tr>" +
+      (d.items || [])
+        .map(
+          (r) =>
+            "<tr><td>" +
+            r.id +
+            "</td><td>" +
+            esc(r.form_type) +
+            "</td><td>" +
+            r.fiscal_year +
+            "</td><td>" +
+            esc(r.fiscal_period) +
+            "</td><td>" +
+            esc(r.filing_date || "—") +
+            "</td><td>" +
+            (r.content_keys_estimate ?? "—") +
+            "</td></tr>"
+        )
+        .join("");
+
+    root.innerHTML =
+      '<div class="hero"><h1>' + esc(sym) + '</h1><div class="sub">SEC 10-K / 10-Q 结构化 JSON · 仅元数据列表</div></div>' +
+      '<div class="card"><p class="hint">完整 <code>raw_content</code> 体积大，未在此页加载；后续可做章节浏览器或接 NLP。</p>' +
+      '<div class="scroll-x"><table class="data">' +
+      tb +
+      "</table></div></div>";
+  }
+
+  async function renderRaw(root) {
+    const inv = await loadInventory();
+    $("sh-co").textContent = (inv.universe && inv.universe.company_name) ? " · " + inv.universe.company_name : "";
+    root.innerHTML =
+      '<div class="hero"><h1>' + esc(sym) + '</h1><div class="sub">inventory 原始 JSON（便于对照 API）</div></div>' +
+      '<div class="card"><pre class="raw" id="raw-inv-json"></pre></div>';
+    const pre = $("raw-inv-json");
+    if (pre) pre.textContent = JSON.stringify(inv, null, 2);
+  }
+
+  document.getElementById("sidebar").addEventListener("click", (e) => {
+    const b = e.target.closest(".nav-item");
+    if (!b || !sym) return;
+    setHash(sym, b.dataset.view);
+  });
+
+  $("q").addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    const qv = $("q").value.trim();
+    searchTimer = setTimeout(async () => {
+      if (qv.length < 1) {
+        $("dd").classList.remove("open");
+        return;
+      }
+      try {
+        const d = await api("/api/v1/data/universe?limit=18&offset=0&active_only=true&symbol_prefix=" + encodeURIComponent(qv));
+        $("dd").innerHTML = (d.items || [])
+          .map(
+            (it) =>
+              '<button type="button" data-sym="' +
+              esc(it.symbol) +
+              '"><span class="sym">' +
+              esc(it.symbol) +
+              '</span><span class="co">' +
+              esc((it.company_name || "").slice(0, 52)) +
+              "</span></button>"
+          )
+          .join("");
+        $("dd").classList.add("open");
+        $("dd").querySelectorAll("button[data-sym]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            setHash(btn.dataset.sym, "dashboard");
+            $("dd").classList.remove("open");
+          });
+        });
+      } catch {
+        $("dd").classList.remove("open");
+      }
+    }, 220);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".search-wrap")) $("dd").classList.remove("open");
+  });
+
+  window.addEventListener("hashchange", render);
+  parseHash();
+  if (sym) render();
+})();
+  </script>
+</body>
+</html>

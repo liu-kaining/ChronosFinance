@@ -199,7 +199,11 @@ async def symbol_inventory(symbol: str) -> SymbolInventoryResponse:
             )
             .where(StaticFinancials.symbol == sym)
             .group_by(StaticFinancials.data_category, StaticFinancials.period)
-            .order_by(StaticFinancials.data_category, StaticFinancials.period)
+            .order_by(
+                func.max(StaticFinancials.fiscal_year).desc(),
+                StaticFinancials.data_category,
+                StaticFinancials.period,
+            )
         )
         sf_rows = (await session.execute(sf_stmt)).all()
         static_slices = [
