@@ -29,6 +29,8 @@ from app.services.sync.orchestrator import DatasetContext, DatasetResult
 from app.services.sync.utils import content_hash, estimate_bytes
 from app.utils.fmp_client import fmp_client
 
+ECONOMIC_UPSERT_CHUNK = 3000
+
 
 def _window(cfg: dict[str, Any]) -> tuple[date, date]:
     today = date.today()
@@ -62,9 +64,10 @@ async def run_dividends_calendar(ctx: DatasetContext) -> DatasetResult:
                 "date": d,
                 "dividend": safe_float(item.get("dividend")),
                 "adjusted_dividend": safe_float(item.get("adjDividend")),
-                "record_date": parse_date(item.get("recordDate")),
-                "payment_date": parse_date(item.get("paymentDate")),
-                "declaration_date": parse_date(item.get("declarationDate")),
+                "record_date": parse_date(item.get("recordDate")) or d,
+                "payment_date": parse_date(item.get("paymentDate")) or d,
+                # Some FMP rows omit declarationDate; fallback avoids hard DB failures.
+                "declaration_date": parse_date(item.get("declarationDate")) or d,
                 "raw_payload": clean_jsonb(item),
             }
         )
@@ -278,7 +281,8 @@ async def run_economic_calendar(ctx: DatasetContext) -> DatasetResult:
         )
     if rows:
         async with async_session_factory() as session:
-            for chunk in chunks(rows, BULK_CHUNK):
+            # economic_calendar has many columns; keep chunk below asyncpg's arg cap.
+            for chunk in chunks(rows, ECONOMIC_UPSERT_CHUNK):
                 stmt = pg_insert(EconomicCalendar).values(list(chunk))
                 stmt = stmt.on_conflict_do_update(
                     index_elements=["date", "event", "country", "currency"],
