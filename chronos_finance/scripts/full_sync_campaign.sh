@@ -6,9 +6,11 @@
 # Later runs (marker exists): does NOT truncate; refreshes universe; re-queues sync jobs —
 #   the API only processes symbols whose *_synced flags are still false (resumable).
 #
-# Background:
+# Background (note stdin closed — avoids zsh “suspended (tty input)” on &):
 #   cd chronos_finance
-#   nohup bash scripts/full_sync_campaign.sh >> full_sync_campaign.log 2>&1 &
+#   nohup bash scripts/full_sync_campaign.sh >> full_sync_campaign.log 2>&1 </dev/null &
+#
+# If logs look stuck, use GNU stdbuf (brew install coreutils) or run inside tmux.
 #
 # If you stop this script but leave the API running, in-flight BackgroundTasks continue.
 # Re-running immediately can queue duplicate jobs for the same dataset. Safer resume:
@@ -23,11 +25,22 @@
 #   FULL_SYNC_SKIP_FILINGS — 1 = skip SEC JSON (marks filings_synced true for all active; no POST alpha/filings)
 #   FULL_SYNC_RESTART_API — 1 = docker-compose restart api before sync (reduces duplicate BG tasks on resume)
 #   FULL_SYNC_MIN_MACRO_SERIES — distinct series_id rows required in macro_economics (default 8)
+#   FULL_SYNC_QUEUE_ONLY — 1 = do not POST/wait on universe (use when active_symbols already set but
+#                          downstream POSTs never ran, e.g. campaign stopped after universe). Implies marker exists.
 #
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
+
+# Close stdin so this script is safe as a background job (no SIGTTIN / “suspended (tty input)” in zsh).
+exec </dev/null
+
+# Line-buffered stdio when stdout is a file (e.g. nohup >> log) so tail -f updates promptly.
+if [[ -z "${CHRONOS_CAMPAIGN_LINEBUF:-}" && ! -t 1 ]] && command -v stdbuf >/dev/null 2>&1; then
+  export CHRONOS_CAMPAIGN_LINEBUF=1
+  exec stdbuf -oL -eL env CHRONOS_CAMPAIGN_LINEBUF=1 bash "$0" "$@"
+fi
 
 # shellcheck disable=SC1091
 set -a
@@ -46,6 +59,7 @@ STABLE_POLLS="${FULL_SYNC_UNIVERSE_STABLE_POLLS:-3}"
 SKIP_FILINGS="${FULL_SYNC_SKIP_FILINGS:-0}"
 RESTART_API="${FULL_SYNC_RESTART_API:-0}"
 MIN_MACRO="${FULL_SYNC_MIN_MACRO_SERIES:-8}"
+QUEUE_ONLY="${FULL_SYNC_QUEUE_ONLY:-0}"
 
 log() { printf "\033[1;36m[campaign]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m[campaign]\033[0m %s\n" "$*"; }
@@ -90,6 +104,8 @@ SQL
 wait_for_universe_stable() {
   log "POST /sync/universe …"
   http_post_sync "universe"
+  log "Background job started — FMP screener + DB upsert can take 1–3 minutes; active_symbols may stay 0 until the first batch commits."
+  log "“stable 0/3” while active=0 only means we are not yet stable at a positive count (that is normal early on)."
 
   local last=-1 stable=0
   local zeros=0
@@ -186,6 +202,9 @@ if ! curl -sf "${API_BASE}/health" > /dev/null; then
 fi
 
 if [[ ! -f "$MARKER" ]]; then
+  if [[ "$QUEUE_ONLY" == "1" ]]; then
+    die "FULL_SYNC_QUEUE_ONLY=1 but marker missing — run once without it (or touch $MARKER after a known-good universe)."
+  fi
   wipe_database
   touch "$MARKER"
   log "Created marker: $MARKER (delete this file to force a full wipe next run)"
@@ -209,7 +228,12 @@ fi
 log "DB: earnings_calendar.fiscal_period_end nullable (idempotent)"
 psql_exec -c "ALTER TABLE earnings_calendar ALTER COLUMN fiscal_period_end DROP NOT NULL;" 2>/dev/null || true
 
-wait_for_universe_stable
+if [[ "$QUEUE_ONLY" == "1" ]]; then
+  log "FULL_SYNC_QUEUE_ONLY=1 — skipping POST /sync/universe and stability wait (assumes stock_universe is already populated)."
+else
+  wait_for_universe_stable
+fi
+log "Proceeding to queue downstream sync jobs …"
 
 if [[ "$SKIP_FILINGS" == "1" ]]; then
   log "FULL_SYNC_SKIP_FILINGS=1 — marking filings_synced for all active symbols"
