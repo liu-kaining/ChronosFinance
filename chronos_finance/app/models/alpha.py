@@ -101,3 +101,55 @@ class SECFile(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class StockNews(Base):
+    """Symbol-linked news articles."""
+
+    __tablename__ = "stock_news"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol", "published_date", "url",
+            name="uq_stock_news",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("ix_stock_news_symbol_published", "symbol", "published_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    published_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    title: Mapped[str | None] = mapped_column(String(500))
+    site: Mapped[str | None] = mapped_column(String(120))
+    url: Mapped[str | None] = mapped_column(String(1000))
+    raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CompanyPressRelease(Base):
+    """Symbol-linked company press releases."""
+
+    __tablename__ = "company_press_releases"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol", "published_date", "url",
+            name="uq_company_press_release",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index(
+            "ix_company_press_release_symbol_published", "symbol", "published_date"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    published_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    title: Mapped[str | None] = mapped_column(String(500))
+    site: Mapped[str | None] = mapped_column(String(120))
+    url: Mapped[str | None] = mapped_column(String(1000))
+    raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

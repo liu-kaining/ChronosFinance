@@ -5,11 +5,15 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
+import app.models  # noqa: F401 - ensure all SQLAlchemy models are registered
+from app.api.v1_freshness import coverage_router, router as freshness_router
+from app.api.v1_ingest import router as ingest_router
 from app.api.v1_insight import router as insight_router
 from app.api.v1_library import router as library_router
 from app.api.v1_sync import router as sync_router
 from app.core.config import get_settings
 from app.core.database import init_db
+from app.services.sync.registry import seed_registry
 from app.utils.fmp_client import fmp_client
 
 settings = get_settings()
@@ -25,6 +29,12 @@ logger = logging.getLogger(__name__)
 async def lifespan(application: FastAPI):
     logger.info("Chronos Finance starting up (env=%s) …", settings.APP_ENV)
     await init_db()
+    try:
+        await seed_registry()
+    except Exception:
+        # Registry seed must never block boot — an orchestrator triggered
+        # later will still read its config from the in-memory registry.
+        logger.exception("seed_registry failed on startup; continuing anyway")
     yield
     logger.info("Chronos Finance shutting down …")
     await fmp_client.close()
@@ -38,8 +48,11 @@ app = FastAPI(
 )
 
 app.include_router(sync_router)
+app.include_router(ingest_router)
 app.include_router(insight_router)
 app.include_router(library_router)
+app.include_router(freshness_router)
+app.include_router(coverage_router)
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 

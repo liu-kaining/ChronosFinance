@@ -229,6 +229,7 @@
         <label>总览</label>
         <button type="button" class="nav-item on" data-view="dashboard">大屏概览</button>
         <button type="button" class="nav-item" data-view="atlas">数据全景</button>
+        <button type="button" class="nav-item" data-view="health">新鲜度 / 覆盖度</button>
       </div>
       <div class="nav-group">
         <label>市场</label>
@@ -258,7 +259,7 @@
         <h2>选择标的开始</h2>
         <p>在顶部搜索框输入<strong>股票代码前缀</strong>，从下拉列表中选择。左侧为模块导航；所有数据来自本地已同步表，<strong>不会修改任何数据</strong>。</p>
         <p id="welcome-nav-hint" class="hint" style="display:none;max-width:520px;margin:1rem auto 0;line-height:1.5"></p>
-        <p style="font-size:0.75rem">路由示例：<code style="color:var(--accent)">#/NVDA/dashboard</code> · <code style="color:var(--accent)">#/BABA/atlas</code>（数据全景） · <code style="color:var(--accent)">#/macro</code>（宏观，可不选标的）</p>
+        <p style="font-size:0.75rem">路由示例：<code style="color:var(--accent)">#/NVDA/dashboard</code> · <code style="color:var(--accent)">#/BABA/atlas</code>（数据全景） · <code style="color:var(--accent)">#/TSLA/health</code>（标的新鲜度） · <code style="color:var(--accent)">#/health</code>（全局新鲜度） · <code style="color:var(--accent)">#/macro</code>（宏观，可不选标的）</p>
       </div>
     </main>
   </div>
@@ -275,6 +276,7 @@
     macro: "宏观序列",
     dashboard: "大屏概览",
     atlas: "数据全景",
+    health: "新鲜度 / 覆盖度",
     market: "行情 & K 线",
     financials: "财务报表",
     events: "财报 / 分红 / 内幕",
@@ -332,9 +334,9 @@
       view = "dashboard";
       return;
     }
-    if (parts.length === 1 && parts[0].toLowerCase() === "macro") {
+    if (parts.length === 1 && (parts[0].toLowerCase() === "macro" || parts[0].toLowerCase() === "health")) {
       sym = "";
-      view = "macro";
+      view = parts[0].toLowerCase();
       return;
     }
     sym = parts[0].toUpperCase().replace(/[^A-Z0-9.\-]/g, "");
@@ -344,8 +346,8 @@
   function setHash(s, v) {
     const raw = String(s || "").trim();
     const vi = (v || "dashboard").toLowerCase().replace(/[^a-z0-9\-]/g, "") || "dashboard";
-    if (vi === "macro" && !raw) {
-      location.hash = "/macro";
+    if ((vi === "macro" || vi === "health") && !raw) {
+      location.hash = "/" + vi;
       return;
     }
     sym = raw.toUpperCase().replace(/[^A-Z0-9.\-]/g, "");
@@ -395,6 +397,16 @@
       return;
     }
 
+    if (view === "health" && !sym) {
+      $("sidebar").querySelectorAll(".sym-head").forEach((el) => el.classList.remove("on"));
+      try {
+        await renderHealth(root, "");
+      } catch (e) {
+        root.innerHTML = '<div class="card"><p class="err">' + esc(e.message || e) + "</p></div>";
+      }
+      return;
+    }
+
     if (!sym) {
       $("sidebar").querySelectorAll(".sym-head").forEach((el) => el.classList.remove("on"));
       root.innerHTML = WELCOME_HTML;
@@ -413,6 +425,7 @@
       else if (view === "sec") await renderSec(root);
       else if (view === "raw") await renderRaw(root);
       else if (view === "atlas") await renderAtlas(root);
+      else if (view === "health") await renderHealth(root, sym);
       else await renderDashboard(root);
     } catch (e) {
       root.innerHTML = '<div class="card"><p class="err">' + esc(e.message || e) + "</p></div>";
@@ -1073,6 +1086,79 @@
     await paintMacroSeries();
   }
 
+  async function renderHealth(root, symbol) {
+    const hasSymbol = !!symbol;
+    const freshness = hasSymbol
+      ? await api("/api/v1/data/freshness/symbol/" + encodeURIComponent(symbol))
+      : await api("/api/v1/data/freshness/overview");
+    const coverage = hasSymbol
+      ? await api("/api/v1/data/coverage/symbol/" + encodeURIComponent(symbol))
+      : await api("/api/v1/data/coverage/global");
+
+    const items = hasSymbol ? (freshness.items || []) : (freshness.items || []);
+    const stale = items.filter((x) => x.is_stale === true).length;
+    const ok = items.filter((x) => (x.status || "") === "ok").length;
+    const failed = items.filter((x) => (x.status || "") === "failed").length;
+    const throttled = items.filter((x) => (x.status || "") === "throttled").length;
+    const never = (coverage.items || []).filter((x) => (x.status || "") === "never").length;
+
+    const tbRows = items
+      .map(function (x) {
+        return (
+          "<tr><td>" +
+          esc(x.dataset_key || "") +
+          "</td><td>" +
+          esc(x.status || "—") +
+          "</td><td>" +
+          esc(x.cursor_date || x.cursor_value || "—") +
+          "</td><td>" +
+          esc(x.last_success_at || "—") +
+          "</td><td>" +
+          esc(x.fresh_until || "—") +
+          "</td><td>" +
+          ((x.records_written_total != null && isFinite(Number(x.records_written_total)))
+            ? Number(x.records_written_total).toLocaleString()
+            : "0") +
+          "</td><td>" +
+          (x.is_stale ? '<span style="color:var(--warn)">stale</span>' : "fresh") +
+          "</td></tr>"
+        );
+      })
+      .join("");
+
+    const covRows = (coverage.items || [])
+      .map(function (x) {
+        return (
+          "<tr><td>" +
+          esc(x.dataset_key || "") +
+          "</td><td>" +
+          esc(x.status || "—") +
+          "</td><td>" +
+          esc(x.cursor_date || "—") +
+          "</td><td>" +
+          esc(x.last_success_at || "—") +
+          "</td><td>" +
+          ((x.records_written_total != null && isFinite(Number(x.records_written_total)))
+            ? Number(x.records_written_total).toLocaleString()
+            : "0") +
+          "</td></tr>"
+        );
+      })
+      .join("");
+
+    root.innerHTML =
+      `<div class="hero"><h1>${esc(hasSymbol ? symbol : "GLOBAL")}</h1><div class="sub">同步新鲜度 / 覆盖度视图（来自 <code>sync_state</code> 与 <code>sync_datasets</code>）。用于回答：哪些数据集是最新、哪些过期、哪些还没跑到。</div></div>` +
+      `<div class="card"><h3>状态总览</h3><div class="kpi-row">` +
+      `<div class="kpi"><label>Tracked</label><div class="v">${items.length}</div></div>` +
+      `<div class="kpi"><label>OK</label><div class="v">${ok}</div></div>` +
+      `<div class="kpi"><label>Stale</label><div class="v" style="color:var(--warn)">${stale}</div></div>` +
+      `<div class="kpi"><label>Failed</label><div class="v" style="color:var(--down)">${failed}</div></div>` +
+      `<div class="kpi"><label>Throttled</label><div class="v">${throttled}</div></div>` +
+      `<div class="kpi"><label>Never</label><div class="v">${never}</div></div></div></div>` +
+      `<div class="card"><h3>Freshness 明细</h3><div class="scroll-x"><table class="data"><tr><th>dataset</th><th>status</th><th>cursor</th><th>last_success</th><th>fresh_until</th><th>rows_total</th><th>freshness</th></tr>${tbRows}</table></div></div>` +
+      `<div class="card"><h3>Coverage 明细</h3><div class="scroll-x"><table class="data"><tr><th>dataset</th><th>status</th><th>cursor_date</th><th>last_success</th><th>rows_total</th></tr>${covRows}</table></div></div>`;
+  }
+
   function fmtAtlasBytes(n) {
     const x = Number(n) || 0;
     if (x < 1024) return x + " B";
@@ -1219,8 +1305,8 @@
     if (!b) return;
     if (!sym) {
       const vk = (b.dataset.view || "").toLowerCase();
-      if (vk === "macro") {
-        setHash("", "macro");
+      if (vk === "macro" || vk === "health") {
+        setHash("", vk);
         return;
       }
       paintWelcomeHint(

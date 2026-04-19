@@ -84,3 +84,89 @@ class EarningsCalendar(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class DividendCalendarGlobal(Base):
+    """Global dividend events calendar."""
+
+    __tablename__ = "dividend_calendar_global"
+    __table_args__ = (
+        PrimaryKeyConstraint("symbol", "date", name="pk_dividend_calendar_global"),
+        Index("ix_dividend_calendar_global_date", "date"),
+    )
+
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    dividend: Mapped[float | None] = mapped_column(Float)
+    adjusted_dividend: Mapped[float | None] = mapped_column(Float)
+    record_date: Mapped[date | None] = mapped_column(Date)
+    payment_date: Mapped[date | None] = mapped_column(Date)
+    declaration_date: Mapped[date | None] = mapped_column(Date)
+    raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SplitCalendarGlobal(Base):
+    """Global stock split events calendar."""
+
+    __tablename__ = "split_calendar_global"
+    __table_args__ = (
+        PrimaryKeyConstraint("symbol", "date", name="pk_split_calendar_global"),
+        Index("ix_split_calendar_global_date", "date"),
+    )
+
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    numerator: Mapped[float | None] = mapped_column(Float)
+    denominator: Mapped[float | None] = mapped_column(Float)
+    raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class IPOCalendar(Base):
+    """Global IPO calendar."""
+
+    __tablename__ = "ipo_calendar"
+    __table_args__ = (
+        PrimaryKeyConstraint("symbol", "date", name="pk_ipo_calendar"),
+        Index("ix_ipo_calendar_date", "date"),
+    )
+
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    company_name: Mapped[str | None] = mapped_column(String(255))
+    exchange: Mapped[str | None] = mapped_column(String(64))
+    price_range: Mapped[str | None] = mapped_column(String(64))
+    shares: Mapped[int | None] = mapped_column(BigInteger)
+    raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class EconomicCalendar(Base):
+    """Global economics release calendar."""
+
+    __tablename__ = "economic_calendar"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "date", "event", "country", "currency", name="pk_economic_calendar"
+        ),
+        Index("ix_economic_calendar_date", "date"),
+    )
+
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    event: Mapped[str] = mapped_column(String(255), nullable=False)
+    country: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    currency: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+    actual: Mapped[str | None] = mapped_column(String(64))
+    previous: Mapped[str | None] = mapped_column(String(64))
+    estimate: Mapped[str | None] = mapped_column(String(64))
+    raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

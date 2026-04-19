@@ -4,30 +4,14 @@ from typing import Awaitable, Callable
 from fastapi import APIRouter, BackgroundTasks
 
 from app.schemas.sync import SyncTriggerResponse
-from app.services.integrated_sync import (
-    sync_analyst_estimates,
-    sync_corporate_actions,
-    sync_daily_prices,
-    sync_earnings_calendar,
-    sync_insider_trades,
-    sync_macro_indicators,
-    sync_sec_filings,
-)
+from app.services.sync.orchestrator import run_dataset
 from app.services.static_data_sync import (
-    sync_balance_sheets,
-    sync_cash_flow_statements,
-    sync_enterprise_values,
-    sync_executive_compensation,
-    sync_financial_ratios,
-    sync_financial_scores,
-    sync_income_statements,
-    sync_key_metrics,
-    sync_revenue_segmentation,
-    sync_stock_peers,
     sync_stock_universe,
 )
 
 logger = logging.getLogger(__name__)
+# Legacy write-side router. New scheduler/write traffic should use
+# /api/v1/ingest/* instead (see spec M6 cutover plan).
 router = APIRouter(prefix="/api/v1/sync", tags=["sync"])
 
 
@@ -38,6 +22,15 @@ async def _run_job(name: str, job: Callable[[], Awaitable[dict]]) -> None:
         logger.info("Background job %s finished: %s", name, result)
     except Exception:
         logger.exception("Background job %s failed", name)
+
+
+async def _run_dataset_job(dataset_key: str) -> None:
+    """Bridge old /sync routes to the new orchestrator."""
+    try:
+        result = await run_dataset(dataset_key, trigger="legacy_sync")
+        logger.info("Legacy sync route forwarded to %s: %s", dataset_key, result)
+    except Exception:
+        logger.exception("Legacy sync route failed for dataset=%s", dataset_key)
 
 
 def _accepted(message: str) -> SyncTriggerResponse:
@@ -56,22 +49,22 @@ async def trigger_universe_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
 @router.post("/financials/income", response_model=SyncTriggerResponse,
              summary="Sync annual income statements")
 async def trigger_income_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "income_statements", sync_income_statements)
-    return _accepted("Income-statement sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.income_statement")
+    return _accepted("Income-statement sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/financials/balance", response_model=SyncTriggerResponse,
              summary="Sync annual balance-sheet statements")
 async def trigger_balance_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "balance_sheets", sync_balance_sheets)
-    return _accepted("Balance-sheet sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.balance_sheet")
+    return _accepted("Balance-sheet sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/financials/cashflow", response_model=SyncTriggerResponse,
              summary="Sync annual cash-flow statements")
 async def trigger_cashflow_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "cash_flow_statements", sync_cash_flow_statements)
-    return _accepted("Cash-flow sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.cash_flow")
+    return _accepted("Cash-flow sync queued (forwarded to /api/v1/ingest).")
 
 
 # ── Phase 3 ──────────────────────────────────────────────────
@@ -82,8 +75,8 @@ async def trigger_cashflow_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
 @router.post("/financials/ratios", response_model=SyncTriggerResponse,
              include_in_schema=False)
 async def trigger_ratios_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "financial_ratios", sync_financial_ratios)
-    return _accepted("Financial-ratios sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.ratios")
+    return _accepted("Financial-ratios sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/metrics", response_model=SyncTriggerResponse,
@@ -93,8 +86,8 @@ async def trigger_ratios_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
 @router.post("/financials/metrics", response_model=SyncTriggerResponse,
              include_in_schema=False)
 async def trigger_metrics_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "key_metrics", sync_key_metrics)
-    return _accepted("Key-metrics sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.metrics")
+    return _accepted("Key-metrics sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/scores", response_model=SyncTriggerResponse,
@@ -105,8 +98,8 @@ async def trigger_metrics_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
 @router.post("/financials/scores", response_model=SyncTriggerResponse,
              include_in_schema=False)
 async def trigger_scores_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "financial_scores", sync_financial_scores)
-    return _accepted("Financial-scores sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.scores")
+    return _accepted("Financial-scores sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/enterprise-values", response_model=SyncTriggerResponse,
@@ -116,8 +109,8 @@ async def trigger_scores_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
 @router.post("/financials/enterprise-values", response_model=SyncTriggerResponse,
              include_in_schema=False)
 async def trigger_ev_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "enterprise_values", sync_enterprise_values)
-    return _accepted("Enterprise-values sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.enterprise_values")
+    return _accepted("Enterprise-values sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/compensation", response_model=SyncTriggerResponse,
@@ -128,8 +121,8 @@ async def trigger_ev_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
 @router.post("/governance/compensation", response_model=SyncTriggerResponse,
              include_in_schema=False)
 async def trigger_compensation_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "executive_compensation", sync_executive_compensation)
-    return _accepted("Executive-compensation sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.executive_compensation")
+    return _accepted("Executive-compensation sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/segments", response_model=SyncTriggerResponse,
@@ -141,8 +134,8 @@ async def trigger_compensation_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
 @router.post("/financials/segments", response_model=SyncTriggerResponse,
              include_in_schema=False)
 async def trigger_segments_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "revenue_segmentation", sync_revenue_segmentation)
-    return _accepted("Revenue-segmentation sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.revenue_segmentation")
+    return _accepted("Revenue-segmentation sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/peers", response_model=SyncTriggerResponse,
@@ -153,8 +146,8 @@ async def trigger_segments_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
 @router.post("/financials/peers", response_model=SyncTriggerResponse,
              include_in_schema=False)
 async def trigger_peers_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "stock_peers", sync_stock_peers)
-    return _accepted("Stock-peers sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.financials.stock_peers")
+    return _accepted("Stock-peers sync queued (forwarded to /api/v1/ingest).")
 
 
 # ── Phase 4 — market & events ─────────────────────────────────
@@ -163,8 +156,8 @@ async def trigger_peers_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
              description="Pulls /historical-price-full/{symbol} (~30y of daily "
                          "bars) and bulk-upserts into daily_prices.")
 async def trigger_prices_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "daily_prices", sync_daily_prices)
-    return _accepted("Daily-prices sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.daily_prices")
+    return _accepted("Daily-prices sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/market/actions", response_model=SyncTriggerResponse,
@@ -173,8 +166,8 @@ async def trigger_prices_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
                          "/historical-price-full/stock_split per symbol; both "
                          "must succeed before the actions_synced flag flips.")
 async def trigger_actions_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "corporate_actions", sync_corporate_actions)
-    return _accepted("Corporate-actions sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.corporate_actions")
+    return _accepted("Corporate-actions sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/events/earnings", response_model=SyncTriggerResponse,
@@ -182,8 +175,8 @@ async def trigger_actions_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
              description="Pulls /historical/earning_calendar/{symbol} and "
                          "bulk-upserts into earnings_calendar.")
 async def trigger_earnings_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "earnings_calendar", sync_earnings_calendar)
-    return _accepted("Earnings-calendar sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.earnings_history")
+    return _accepted("Earnings-calendar sync queued (forwarded to /api/v1/ingest).")
 
 
 # ── Phase 5 — alpha & text ────────────────────────────────────
@@ -192,8 +185,8 @@ async def trigger_earnings_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
              description="Pulls paginated /insider-trading?symbol=... per symbol "
                          "and bulk-upserts into insider_trades.")
 async def trigger_insider_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "insider_trades", sync_insider_trades)
-    return _accepted("Insider-trades sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.alpha.insider_trades")
+    return _accepted("Insider-trades sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/alpha/estimates", response_model=SyncTriggerResponse,
@@ -202,8 +195,8 @@ async def trigger_insider_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
                          "/price-target?symbol=... (per-analyst). Stored in "
                          "analyst_estimates with a `kind` discriminator.")
 async def trigger_estimates_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "analyst_estimates", sync_analyst_estimates)
-    return _accepted("Analyst-estimates sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.alpha.analyst_estimates")
+    return _accepted("Analyst-estimates sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/alpha/filings", response_model=SyncTriggerResponse,
@@ -212,8 +205,8 @@ async def trigger_estimates_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
                          "for the last 5 fiscal years (FY). Stores the full "
                          "section tree as JSONB in sec_files.")
 async def trigger_filings_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "sec_filings", sync_sec_filings)
-    return _accepted("SEC-filings sync queued.")
+    bg.add_task(_run_dataset_job, "symbol.alpha.sec_filings_10k")
+    return _accepted("SEC-filings sync queued (forwarded to /api/v1/ingest).")
 
 
 @router.post("/macro/indicators", response_model=SyncTriggerResponse,
@@ -222,5 +215,5 @@ async def trigger_filings_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
                          "10-year yield / unemployment, etc. Not tied to the "
                          "universe; persists into macro_economics.")
 async def trigger_macro_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
-    bg.add_task(_run_job, "macro_indicators", sync_macro_indicators)
-    return _accepted("Macro-indicators sync queued.")
+    bg.add_task(_run_dataset_job, "global.macro_economics")
+    return _accepted("Macro-indicators sync queued (forwarded to /api/v1/ingest).")

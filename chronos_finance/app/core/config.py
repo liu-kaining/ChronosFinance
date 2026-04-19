@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     FMP_BASE_URL: str = "https://financialmodelingprep.com/stable"
     FMP_RATE_LIMIT: int = 750
     FMP_RATE_PERIOD: int = 60
+    FMP_BANDWIDTH_LIMIT_GB: int = 50
+    FMP_BANDWIDTH_WINDOW_DAYS: int = 30
+    FMP_BANDWIDTH_HEAVY_THROTTLE_RATIO: float = 0.90
+    FMP_BANDWIDTH_MEDIUM_THROTTLE_RATIO: float = 0.98
 
     # App
     APP_ENV: str = "development"
