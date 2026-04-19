@@ -81,11 +81,13 @@ async def run(ctx: DatasetContext) -> DatasetResult:
             {
                 "symbol": str(symbol).upper(),
                 "date": d,
+                # Keep compatibility with old DBs that accidentally have
+                # fiscal_period_end as NOT NULL.
                 "fiscal_period_end": parse_date(
                     entry.get("fiscalDateEnding")
                     or entry.get("fiscalDate")
                     or entry.get("fiscalPeriodEnd")
-                ),
+                ) or d,
                 "eps_estimated": safe_float(
                     entry.get("epsEstimated") or entry.get("eps_estimate")
                 ),

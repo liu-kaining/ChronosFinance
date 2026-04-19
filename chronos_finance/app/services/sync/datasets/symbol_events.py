@@ -115,7 +115,9 @@ async def run_symbol_earnings_history(ctx: DatasetContext) -> DatasetResult:
             {
                 "symbol": symbol,
                 "date": d,
-                "fiscal_period_end": parse_date(fiscal_end),
+                # Old DB snapshots may still have NOT NULL on fiscal_period_end.
+                # Fallback to announcement date when fiscal end is missing.
+                "fiscal_period_end": parse_date(fiscal_end) or d,
                 "eps_estimated": safe_float(
                     entry.get("epsEstimated") or entry.get("eps_estimate")
                 ),
