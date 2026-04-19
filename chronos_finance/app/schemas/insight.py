@@ -1,6 +1,7 @@
 """Response models for read-only DB insight endpoints."""
 
 from datetime import date
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -135,3 +136,87 @@ class SymbolInventoryResponse(BaseModel):
     insider_trades: DateRangeStats
     analyst_estimates_by_kind: list[NamedCount] = Field(default_factory=list)
     sec_filings: list[SecFormInventory] = Field(default_factory=list)
+
+
+class MacroSeriesSummary(BaseModel):
+    series_id: str
+    rows: int
+    date_min: date | None = None
+    date_max: date | None = None
+
+
+class MacroSeriesListResponse(BaseModel):
+    series: list[MacroSeriesSummary] = Field(default_factory=list)
+
+
+class MacroSeriesPoint(BaseModel):
+    date: date
+    value: float | None = None
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class MacroSeriesDataResponse(BaseModel):
+    series_id: str
+    rows: int
+    items: list[MacroSeriesPoint] = Field(default_factory=list)
+
+
+class StaticFinancialsBucketAtlas(BaseModel):
+    data_category: str
+    period: str
+    rows: int
+    fiscal_year_min: int | None = None
+    fiscal_year_max: int | None = None
+    approx_json_text_bytes: int = Field(
+        0, description="Σ length(raw_payload::text) in this bucket (coarse)"
+    )
+
+
+class DateRangeWithJsonFootprint(BaseModel):
+    rows: int
+    date_min: date | None = None
+    date_max: date | None = None
+    approx_json_text_bytes: int = Field(
+        0, description="Σ length(JSONB::text) for rows in scope (0 if table has no JSONB)"
+    )
+
+
+class SecFormAtlas(BaseModel):
+    form_type: str
+    rows: int
+    fiscal_year_min: int | None = None
+    fiscal_year_max: int | None = None
+    approx_json_text_bytes: int = 0
+
+
+class AnalystKindAtlas(BaseModel):
+    kind: str
+    rows: int
+    approx_json_text_bytes: int = 0
+
+
+class SymbolDataAtlasResponse(BaseModel):
+    """
+    Per-symbol transparency: row counts, date ranges, and coarse JSONB footprint
+    (PostgreSQL ``length(jsonb::text)`` summed — not identical to on-disk ``pg_column_size``).
+    """
+
+    symbol: str
+    universe: UniverseRow | None = None
+    universe_raw_payload_approx_bytes: int = Field(
+        0, description="length(stock_universe.raw_payload::text) if row exists"
+    )
+    static_financials_buckets: list[StaticFinancialsBucketAtlas] = Field(
+        default_factory=list
+    )
+    daily_prices: DateRangeWithJsonFootprint
+    corporate_actions: DateRangeWithJsonFootprint
+    corporate_actions_by_type: list[NamedCount] = Field(default_factory=list)
+    earnings_calendar: DateRangeWithJsonFootprint
+    insider_trades: DateRangeWithJsonFootprint
+    analyst_estimates_by_kind: list[AnalystKindAtlas] = Field(default_factory=list)
+    sec_filings: list[SecFormAtlas] = Field(default_factory=list)
+    grand_total_approx_json_text_bytes: int = Field(
+        0,
+        description="Sum of all ``approx_json_text_bytes`` above incl. universe payload",
+    )
