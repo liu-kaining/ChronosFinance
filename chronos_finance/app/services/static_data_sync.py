@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 from sqlalchemy import select, update
@@ -41,7 +41,7 @@ UNIVERSE_SCREENER_PARAMS: dict[str, Any] = {
 
 
 def _current_year() -> int:
-    return datetime.utcnow().year
+    return datetime.now(timezone.utc).year
 
 
 # ══════════════════════════════════════════════════════════════
@@ -52,14 +52,15 @@ async def sync_stock_universe() -> dict:
     """
     Re-materialise the 'golden universe' from FMP /stock-screener.
 
-    Strategy — fetch-first, then reset, then upsert:
+    Strategy — fetch-first, upsert, then deactivate non-hits atomically:
 
       1. Call FMP screener FIRST. If FMP is flaky we bail out before touching
          the DB, so the previous day's universe stays intact.
-      2. Reset `is_actively_trading=False` on every existing row in one UPDATE
-         (separate committed transaction). This is our "deactivation sweep".
-      3. Upsert each screener hit with `is_actively_trading=True`, batched by
-         UNIVERSE_BATCH_SIZE so a DB hiccup mid-way only loses the last batch.
+      2. Upsert each screener hit with `is_actively_trading=True`, batched by
+         UNIVERSE_BATCH_SIZE.
+      3. In the SAME final transaction, deactivate any symbol NOT in the
+         screener result set. This avoids a crash window where all symbols
+         could be left deactivated.
 
     Every downstream sync (prices, financials, ratios, …) pulls only symbols
     with `is_actively_trading = True`, so this function is the single
@@ -82,22 +83,15 @@ async def sync_stock_universe() -> dict:
         logger.warning("Screener returned 0 rows — aborting without touching DB")
         return {"screener_hits": 0, "upserted": 0, "deactivated": 0}
 
-    # ── Step 1: deactivation sweep ────────────────────────────
-    async with async_session_factory() as session:
-        result = await session.execute(
-            update(StockUniverse).values(is_actively_trading=False)
-        )
-        deactivated = result.rowcount or 0
-        await session.commit()
-    logger.info("Deactivation sweep: set is_actively_trading=False on %d rows", deactivated)
-
-    # ── Step 2: upsert the golden set ─────────────────────────
+    # ── Step 1: upsert the golden set ─────────────────────────
+    active_symbols: set[str] = set()
     upserted = 0
     async with async_session_factory() as session:
         for i, stock in enumerate(raw_list, start=1):
             symbol = stock.get("symbol")
             if not symbol:
                 continue
+            active_symbols.add(symbol)
 
             # Screener returns `companyName`; /stock/list used `name`. Accept either.
             values = {
@@ -120,13 +114,25 @@ async def sync_stock_universe() -> dict:
             upserted += 1
 
             if i % UNIVERSE_BATCH_SIZE == 0:
-                await session.commit()
                 logger.info("Universe upsert progress: %d / %d", i, total)
+
+        # ── Step 2: deactivate symbols NOT in the screener result ──
+        # Done in the same session so a mid-way crash never leaves all
+        # symbols deactivated.
+        if active_symbols:
+            result = await session.execute(
+                update(StockUniverse)
+                .where(StockUniverse.symbol.notin_(active_symbols))
+                .values(is_actively_trading=False)
+            )
+            deactivated = result.rowcount or 0
+        else:
+            deactivated = 0
 
         await session.commit()
 
     logger.info(
-        "Universe sync complete — %d active symbols (after deactivation sweep of %d rows)",
+        "Universe sync complete — %d active symbols (%d deactivated)",
         upserted, deactivated,
     )
     return {

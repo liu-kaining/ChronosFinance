@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 import httpx
@@ -166,7 +166,7 @@ async def run_analyst_estimates(ctx: DatasetContext) -> DatasetResult:
                 "symbol": symbol,
                 "kind": "price_target_consensus",
                 "ref_date": None,
-                "published_date": datetime.utcnow().date(),
+                "published_date": datetime.now(timezone.utc).date(),
                 "raw_payload": clean_jsonb(pt_item),
             }
         )
@@ -206,7 +206,7 @@ async def run_sec_filings(ctx: DatasetContext) -> DatasetResult:
     form_type = str(cfg.get("form_type", "10-K"))
     symbol = ctx.symbol
 
-    cal_year = datetime.utcnow().year
+    cal_year = datetime.now(timezone.utc).year
     last_completed_fy = cal_year - 1
     year_list = list(range(last_completed_fy - years + 1, last_completed_fy + 1))
 

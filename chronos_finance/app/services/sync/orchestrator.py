@@ -277,6 +277,13 @@ async def _run_single(
         details=result.details,
     )
 
+    # Only mark last_success_at when data was actually written or confirmed
+    # unchanged. "empty" skips should NOT reset the freshness clock — doing
+    # so hides the fact that no data exists for this dataset/symbol.
+    is_real_success = (
+        status == "ok"
+        or result.skipped_reason == "unchanged"
+    )
     await _commit_state(
         spec=spec,
         symbol=symbol,
@@ -284,6 +291,7 @@ async def _run_single(
         finished_at=finished_at,
         previous=previous,
         status="ok" if status == "ok" else "idle",
+        update_success_at=is_real_success,
     )
 
     return _RunOutcome(
@@ -380,9 +388,8 @@ async def _commit_state(
     finished_at: datetime,
     previous: SyncState | None,
     status: str,
+    update_success_at: bool = True,
 ) -> None:
-    fresh_until = finished_at + timedelta(seconds=spec.cadence_seconds)
-
     new_cursor_date = result.cursor_date
     new_cursor_value = result.cursor_value
     # Sticky cursors — if the handler didn't advance the cursor (skipped /
@@ -398,6 +405,14 @@ async def _commit_state(
         if previous else (0, 0, 0)
     )
 
+    # Only advance the freshness clock when we actually confirmed fresh data.
+    if update_success_at:
+        success_at = finished_at
+        fresh_until = finished_at + timedelta(seconds=spec.cadence_seconds)
+    else:
+        success_at = previous.last_success_at if previous else None
+        fresh_until = previous.fresh_until if previous else None
+
     row = {
         "dataset_key": spec.key,
         "symbol": symbol,
@@ -405,7 +420,7 @@ async def _commit_state(
         "cursor_value": new_cursor_value,
         "status": status,
         "last_attempt_at": finished_at,
-        "last_success_at": finished_at,
+        "last_success_at": success_at,
         "fresh_until": fresh_until,
         "records_written": result.records_written,
         "records_written_total": prev_totals[0] + result.records_written,

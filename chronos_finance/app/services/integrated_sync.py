@@ -15,7 +15,7 @@ Design:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Iterable, Iterator, Sequence
 
 import httpx
@@ -567,7 +567,7 @@ async def sync_analyst_estimates() -> dict:
                         "symbol": symbol,
                         "kind": "price_target_consensus",
                         "ref_date": None,
-                        "published_date": datetime.utcnow().date(),
+                        "published_date": datetime.now(timezone.utc).date(),
                         "raw_payload": _clean_jsonb(consensus),
                     })
 
@@ -622,7 +622,7 @@ async def sync_sec_filings(years: int = 5, form_type: str = "10-K") -> dict:
 
     # FY=Y 的 10-K 通常在日历年 Y+1 才公布；不要把 ``current_year`` 当作已可下载的 FY，
     # 否则 FMP 对 FY=当年 返回 “No Data”，旧逻辑会当成致命错误整票失败。
-    cal_year = datetime.utcnow().year
+    cal_year = datetime.now(timezone.utc).year
     last_completed_fy = cal_year - 1
     year_list = list(range(last_completed_fy - years + 1, last_completed_fy + 1))
 

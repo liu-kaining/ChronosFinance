@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -36,7 +36,7 @@ def _extract_fiscal_quarter(row: dict[str, Any]) -> int | None:
 
 
 def _current_year() -> int:
-    return datetime.utcnow().year
+    return datetime.now(timezone.utc).year
 
 
 def _year_field(row: dict[str, Any]) -> int | None:
@@ -112,26 +112,42 @@ async def _run_static_category(
     max_year: int | None = None
     year = _current_year()
     quarter = None
-    for row in entries:
-        if snapshot_year:
-            fy = year
-            fq = quarter
-        else:
-            fy = _extract_fiscal_year(row)
-            fq = _extract_fiscal_quarter(row)
-        if fy is None:
-            continue
-        max_year = fy if max_year is None or fy > max_year else max_year
-        rows.append(
+
+    if snapshot_year and len(entries) > 1:
+        # Multiple entries share the same fiscal_year in snapshot mode.
+        # Merge them into a single JSON array to avoid dedupe dropping data.
+        rows = [
             {
                 "symbol": symbol,
                 "data_category": data_category,
                 "period": period,
-                "fiscal_year": fy,
-                "fiscal_quarter": fq,
-                "raw_payload": clean_jsonb(row),
+                "fiscal_year": year,
+                "fiscal_quarter": quarter,
+                "raw_payload": clean_jsonb(entries),
             }
-        )
+        ]
+        max_year = year
+    else:
+        for row in entries:
+            if snapshot_year:
+                fy = year
+                fq = quarter
+            else:
+                fy = _extract_fiscal_year(row)
+                fq = _extract_fiscal_quarter(row)
+            if fy is None:
+                continue
+            max_year = fy if max_year is None or fy > max_year else max_year
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "data_category": data_category,
+                    "period": period,
+                    "fiscal_year": fy,
+                    "fiscal_quarter": fq,
+                    "raw_payload": clean_jsonb(row),
+                }
+            )
     rows = dedupe(rows, ("symbol", "data_category", "period", "fiscal_year"))
 
     if rows:

@@ -85,9 +85,15 @@ class FMPClient:
             period=self._settings.FMP_RATE_PERIOD,
         )
         self._client: httpx.AsyncClient | None = None
+        self._client_lock = asyncio.Lock()
 
     async def _ensure_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
+        if self._client is not None and not self._client.is_closed:
+            return self._client
+        async with self._client_lock:
+            # Double-check after acquiring the lock.
+            if self._client is not None and not self._client.is_closed:
+                return self._client
             self._client = httpx.AsyncClient(
                 base_url=self._settings.FMP_BASE_URL,
                 timeout=httpx.Timeout(
