@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     DB_ECHO: bool = False
 
+    # CORS — comma-separated origins. "*" allows any origin (dev only).
+    # Example:
+    #   CORS_ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173,http://web
+    CORS_ALLOW_ORIGINS: str = "*"
+
     @property
     def async_database_url(self) -> str:
         return (

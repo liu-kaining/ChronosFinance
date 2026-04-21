@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================
+ * TradingView Pro — dark gray theme tokens
+ * Use via Tailwind (bg-panel / text-muted / border-border-soft)
+ * ========================================================= */
+:root {
+  color-scheme: dark;
+
+  /* backgrounds */
+  --bg-0: #0d1015;
+  --bg-1: #131722;
+  --bg-2: #1e222d;
+  --bg-3: #2a2e39;
+  --border: #363a45;
+  --border-soft: #2a2e39;
+
+  /* text */
+  --text-0: #d1d4dc;
+  --text-1: #9598a1;
+  --text-2: #5d606b;
+
+  /* signal */
+  --up: #26a69a;
+  --down: #ef5350;
+  --up-soft: rgba(38, 166, 154, 0.15);
+  --down-soft: rgba(239, 83, 80, 0.15);
+
+  /* accents */
+  --accent: #2962ff;
+  --accent-2: #f7931a;
+  --warn: #ff9800;
+  --purple: #9c27b0;
+  --cyan: #00bcd4;
+  --pink: #e91e63;
+
+  /* semantic */
+  --ok: var(--up);
+  --stale: var(--warn);
+  --fail: var(--down);
+}
+
+/* =========================================================
+ * Base resets
+ * ========================================================= */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Numeric / code font where it matters */
+code,
+kbd,
+pre,
+samp,
+.mono {
+  font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Scrollbar (dark) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--bg-3);
+  border-radius: 5px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+
+/* Remove default focus outline; use ring utility instead */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* =========================================================
+ * Utility classes
+ * ========================================================= */
+@layer components {
+  .card {
+    @apply rounded-card bg-panel border border-border-soft shadow-card;
+  }
+
+  .card-hover {
+    @apply transition-colors hover:bg-panel-hi;
+  }
+
+  .kpi-num {
+    @apply font-mono text-2xl tracking-tight;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ticker {
+    @apply font-mono font-bold tracking-wider;
+  }
+
+  .up {
+    color: var(--up);
+  }
+
+  .down {
+    color: var(--down);
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md border border-border-soft bg-bg-2 px-1.5 py-0.5 text-2xs text-text-secondary;
+  }
+}

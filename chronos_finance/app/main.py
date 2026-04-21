@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 import app.models  # noqa: F401 - ensure all SQLAlchemy models are registered
@@ -45,6 +46,24 @@ app = FastAPI(
     description="Quantitative & fundamental data center backed by FMP Premium.",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+# CORS — allow the chronos_web frontend (and chronos_ai service) to call the API.
+# Configure via CORS_ALLOW_ORIGINS env (comma-separated). "*" = allow any (dev only).
+_cors_raw = (settings.CORS_ALLOW_ORIGINS or "").strip()
+if _cors_raw == "*" or not _cors_raw:
+    _cors_origins: list[str] = ["*"]
+    _cors_allow_credentials = False
+else:
+    _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+    _cors_allow_credentials = True
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_allow_credentials,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 app.include_router(sync_router)
