@@ -1,4 +1,3 @@
 from app.app_factory import create_app
 
-# Keep `app.main:app` as a read-only default for compatibility.
 app = create_app(role="read")

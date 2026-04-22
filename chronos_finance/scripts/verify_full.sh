@@ -19,10 +19,10 @@ cd "$PROJECT_DIR"
 # shellcheck disable=SC1091
 set -a; source .env; set +a
 
-APP_PORT="${APP_PORT:-8000}"
+APP_WRITE_PORT="${APP_WRITE_PORT:-8001}"
 POSTGRES_USER="${POSTGRES_USER:-chronos}"
 POSTGRES_DB="${POSTGRES_DB:-chronos_finance}"
-API_BASE="http://localhost:${APP_PORT}"
+API_BASE="http://localhost:${APP_WRITE_PORT}"
 
 if [[ "${VERIFY_SKIP_FILINGS:-0}" == "1" ]]; then
   DEFAULT_TIMEOUT=600
@@ -133,7 +133,7 @@ done
 pass "all jobs accepted"
 
 log "Poll until all required flags × 3 symbols (or timeout)…"
-log "Tip: tail logs in another terminal: docker-compose logs -f api"
+log "Tip: tail logs in another terminal: docker-compose logs -f api-write"
 deadline=$(( $(date +%s) + TIMEOUT_SECS ))
 start_ts=$(date +%s)
 while :; do
@@ -183,7 +183,7 @@ SELECT symbol,
   earnings_synced::int AS e, insider_synced::int AS in_, estimates_synced::int AS est,
   filings_synced::int AS f
 FROM stock_universe WHERE symbol IN ('AAPL','MSFT','GOOGL') ORDER BY symbol;"
-    docker-compose logs --tail=200 api
+    docker-compose logs --tail=200 api-write
     exit 1
   fi
   sleep 10

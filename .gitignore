@@ -198,6 +198,10 @@ cython_debug/
 .ruff_cache/
 chronos_web/.npm-cache/
 
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store
+
 # PyPI configuration file
 .pypirc
 

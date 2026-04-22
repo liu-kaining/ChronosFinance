@@ -14,7 +14,7 @@ set -euo pipefail
 # - only queues datasets whose cadence window has elapsed
 #
 # Env:
-#   APP_PORT                   default 8000
+#   APP_WRITE_PORT             default 8001
 #   INGEST_SCHED_STATE_FILE    default .ingest_scheduler_state.json
 #   INGEST_SCHED_FORCE_ALL     1 = ignore cadence and queue all enabled datasets once
 #   INGEST_SCHED_DRY_RUN       1 = print due datasets without POST
@@ -27,8 +27,8 @@ set -a
 [[ -f .env ]] && source .env
 set +a
 
-APP_PORT="${APP_PORT:-8000}"
-API_BASE="http://localhost:${APP_PORT}"
+APP_WRITE_PORT="${APP_WRITE_PORT:-8001}"
+API_BASE="http://localhost:${APP_WRITE_PORT}"
 STATE_FILE="${INGEST_SCHED_STATE_FILE:-$PROJECT_DIR/.ingest_scheduler_state.json}"
 FORCE_ALL="${INGEST_SCHED_FORCE_ALL:-0}"
 DRY_RUN="${INGEST_SCHED_DRY_RUN:-0}"

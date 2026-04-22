@@ -17,13 +17,14 @@
 #   FULL_SYNC_RESTART_API=1 bash scripts/full_sync_campaign.sh
 #
 # Env:
-#   APP_PORT              — host port for API (from .env; default 8000)
+#   APP_READ_PORT         — host port for read API (stats/health; default API_PORT or 8000)
+#   APP_WRITE_PORT        — host port for write API (sync trigger; default 8001)
 #   FULL_SYNC_MARKER      — override path to marker file (default: .chronos_data_campaign_initialized)
 #   FULL_SYNC_POLL_SECS   — poll interval (default 30)
 #   FULL_SYNC_TIMEOUT_SECS — 0 = no limit; else exit 1 if not done in N seconds
 #   FULL_SYNC_UNIVERSE_STABLE_POLLS — consecutive identical active count to treat universe as done (default 3)
 #   FULL_SYNC_SKIP_FILINGS — 1 = skip SEC JSON (marks filings_synced true for all active; no POST alpha/filings)
-#   FULL_SYNC_RESTART_API — 1 = docker-compose restart api before sync (reduces duplicate BG tasks on resume)
+#   FULL_SYNC_RESTART_API — 1 = docker-compose restart api-write before sync (reduces duplicate BG tasks on resume)
 #   FULL_SYNC_MIN_MACRO_SERIES — distinct series_id rows required in macro_economics (default 8)
 #   FULL_SYNC_QUEUE_ONLY — 1 = do not POST/wait on universe (use when active_symbols already set but
 #                          downstream POSTs never ran, e.g. campaign stopped after universe). Implies marker exists.
@@ -47,10 +48,12 @@ set -a
 [[ -f .env ]] && source .env
 set +a
 
-APP_PORT="${APP_PORT:-8000}"
+APP_READ_PORT="${APP_READ_PORT:-${API_PORT:-8000}}"
+APP_WRITE_PORT="${APP_WRITE_PORT:-8001}"
 POSTGRES_USER="${POSTGRES_USER:-chronos}"
 POSTGRES_DB="${POSTGRES_DB:-chronos_finance}"
-API_BASE="http://localhost:${APP_PORT}"
+READ_API_BASE="http://localhost:${APP_READ_PORT}"
+WRITE_API_BASE="http://localhost:${APP_WRITE_PORT}"
 
 MARKER="${FULL_SYNC_MARKER:-$PROJECT_DIR/.chronos_data_campaign_initialized}"
 POLL_SECS="${FULL_SYNC_POLL_SECS:-30}"
@@ -72,7 +75,7 @@ psql_exec() {
 http_post_sync() {
   local path="$1"
   local code
-  code="$(curl -sS -o /tmp/campaign_sync_resp.json -w "%{http_code}" -X POST "${API_BASE}/api/v1/sync/${path}")"
+  code="$(curl -sS -o /tmp/campaign_sync_resp.json -w "%{http_code}" -X POST "${WRITE_API_BASE}/api/v1/sync/${path}")"
   if [[ "$code" != "200" ]]; then
     die "POST /api/v1/sync/${path} → HTTP ${code} $(head -c 200 /tmp/campaign_sync_resp.json)"
   fi
@@ -111,7 +114,7 @@ wait_for_universe_stable() {
   local zeros=0
   while true; do
     local json active
-    json="$(curl -sS "${API_BASE}/api/v1/stats/sync-progress")" || die "sync-progress request failed"
+    json="$(curl -sS "${READ_API_BASE}/api/v1/stats/sync-progress")" || die "sync-progress request failed"
     active="$(echo "$json" | python3 -c 'import json,sys; print(int(json.load(sys.stdin)["active_symbols"]))')"
 
     if (( active == last && active > 0 )); then
@@ -130,7 +133,7 @@ wait_for_universe_stable() {
     if (( active == 0 )); then
       zeros=$((zeros + 1))
       if (( zeros >= 120 )); then
-        die "active_symbols stayed 0 for ~${zeros} polls — universe sync failed or screener returned nothing. Check: docker-compose logs api"
+        die "active_symbols stayed 0 for ~${zeros} polls — universe sync failed or screener returned nothing. Check: docker-compose logs api-write"
       fi
     else
       zeros=0
@@ -197,8 +200,11 @@ queue_all_sync_jobs() {
 if ! docker-compose ps --status running --services 2>/dev/null | grep -qx db; then
   die "db service not running. Start: docker-compose up -d"
 fi
-if ! curl -sf "${API_BASE}/health" > /dev/null; then
-  die "API not reachable at ${API_BASE}/health (check APP_PORT in .env)"
+if ! curl -sf "${READ_API_BASE}/health" > /dev/null; then
+  die "Read API not reachable at ${READ_API_BASE}/health (check APP_READ_PORT/API_PORT in .env)"
+fi
+if ! curl -sf "${WRITE_API_BASE}/health" > /dev/null; then
+  die "Write API not reachable at ${WRITE_API_BASE}/health (check APP_WRITE_PORT in .env)"
 fi
 
 if [[ ! -f "$MARKER" ]]; then
@@ -213,16 +219,16 @@ else
 fi
 
 if [[ "$RESTART_API" == "1" ]]; then
-  warn "FULL_SYNC_RESTART_API=1 — restarting api to clear duplicate background tasks …"
-  docker-compose restart api
+  warn "FULL_SYNC_RESTART_API=1 — restarting api-write to clear duplicate background tasks …"
+  docker-compose restart api-write
   sleep 5
   for _ in $(seq 1 30); do
-    if curl -sf "${API_BASE}/health" > /dev/null; then
+    if curl -sf "${WRITE_API_BASE}/health" > /dev/null; then
       break
     fi
     sleep 2
   done
-  curl -sf "${API_BASE}/health" > /dev/null || die "API did not come back after restart"
+  curl -sf "${WRITE_API_BASE}/health" > /dev/null || die "Write API did not come back after restart"
 fi
 
 log "DB: earnings_calendar.fiscal_period_end nullable (idempotent)"
@@ -244,7 +250,7 @@ log "Queue all sync jobs (one wave) …"
 queue_all_sync_jobs
 
 log "Poll until every active symbol has all required flags and macro_economics is populated …"
-log "Tip: docker-compose logs -f api"
+log "Tip: docker-compose logs -f api-write"
 start_ts="$(date +%s)"
 last_macro_nudge=0
 
@@ -254,7 +260,7 @@ while true; do
     die "FULL_SYNC_TIMEOUT_SECS=${TIMEOUT_SECS} elapsed — not finished. Check sync-progress and API logs."
   fi
 
-  prog="$(curl -sS "${API_BASE}/api/v1/stats/sync-progress")" || die "sync-progress failed"
+  prog="$(curl -sS "${READ_API_BASE}/api/v1/stats/sync-progress")" || die "sync-progress failed"
   mc="$(macro_distinct)"
   mc="${mc//[[:space:]]/}"
 
@@ -272,7 +278,7 @@ while true; do
 
   if (( sym_done == 1 )) && (( mc >= MIN_MACRO )); then
     log "Campaign complete — all required symbol flags and macro (>= ${MIN_MACRO} series)."
-    curl -sS "${API_BASE}/api/v1/stats/overview" | python3 -m json.tool || true
+    curl -sS "${READ_API_BASE}/api/v1/stats/overview" | python3 -m json.tool || true
     exit 0
   fi
 
