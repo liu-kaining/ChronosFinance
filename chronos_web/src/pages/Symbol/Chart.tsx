@@ -163,8 +163,8 @@ export function SymbolChart() {
     volumeSeries.setData(volumeData);
 
     // Update MA lines
-    const ma20 = (chart as unknown as Record<string, ISeriesApi<"Line">).__ma20;
-    const ma50 = (chart as unknown as Record<string, ISeriesApi<"Line">).__ma50;
+    const ma20 = (chart as unknown as Record<string, ISeriesApi<"Line">>).__ma20;
+    const ma50 = (chart as unknown as Record<string, ISeriesApi<"Line">>).__ma50;
     if (ma20 && ma20Data.length) ma20.setData(ma20Data);
     if (ma50 && ma50Data.length) ma50.setData(ma50Data);
 

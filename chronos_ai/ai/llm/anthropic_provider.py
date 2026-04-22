@@ -16,7 +16,10 @@ class AnthropicProvider(LLMProvider):
     """Anthropic Claude API provider."""
 
     def __init__(self) -> None:
-        self.client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self.client = anthropic.AsyncAnthropic(
+            api_key=settings.ANTHROPIC_API_KEY,
+            base_url=settings.ANTHROPIC_BASE_URL,
+        )
         self.model = settings.ANTHROPIC_MODEL
 
     def get_model_name(self) -> str:

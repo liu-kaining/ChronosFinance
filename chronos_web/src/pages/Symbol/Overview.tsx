@@ -10,7 +10,7 @@ import {
 import { api, endpoints } from "@/lib/api";
 import type { DailyPrice, PricesSeriesResponse, StaticCategoryInfo, StaticCategoriesResponse, SymbolInventory } from "@/lib/types";
 import { cn } from "@/lib/cn";
-import { fmtCap, fmtNum, fmtDay } from "@/lib/format";
+import { fmtCap, fmtNum, fmtDay, fmtPctSigned } from "@/lib/format";
 import { signalColor } from "@/lib/theme";
 
 /** Fetch latest price (most recent bar) */

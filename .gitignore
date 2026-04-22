@@ -196,6 +196,7 @@ cython_debug/
 
 # Ruff stuff:
 .ruff_cache/
+chronos_web/.npm-cache/
 
 # PyPI configuration file
 .pypirc
