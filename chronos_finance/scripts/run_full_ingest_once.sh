@@ -16,12 +16,15 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
+ROOT_DIR="$(cd "$PROJECT_DIR/.." && pwd)"
+export COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/docker-compose.yml}"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-chronosfinance}"
 
 set -a
-[[ -f .env ]] && source .env
+[[ -f "$PROJECT_DIR/../.env" ]] && source "$PROJECT_DIR/../.env"
 set +a
 
-APP_WRITE_PORT="${APP_WRITE_PORT:-8001}"
+APP_WRITE_PORT="${APP_WRITE_PORT:-${API_WRITE_PORT:-8001}}"
 API_BASE="http://localhost:${APP_WRITE_PORT}"
 
 log() { printf "[full-ingest-once] %s\n" "$*"; }

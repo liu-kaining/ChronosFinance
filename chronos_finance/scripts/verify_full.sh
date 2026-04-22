@@ -15,11 +15,14 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
+ROOT_DIR="$(cd "$PROJECT_DIR/.." && pwd)"
+export COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/docker-compose.yml}"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-chronosfinance}"
 
 # shellcheck disable=SC1091
-set -a; source .env; set +a
+set -a; source "$PROJECT_DIR/../.env"; set +a
 
-APP_WRITE_PORT="${APP_WRITE_PORT:-8001}"
+APP_WRITE_PORT="${APP_WRITE_PORT:-${API_WRITE_PORT:-8001}}"
 POSTGRES_USER="${POSTGRES_USER:-chronos}"
 POSTGRES_DB="${POSTGRES_DB:-chronos_finance}"
 API_BASE="http://localhost:${APP_WRITE_PORT}"

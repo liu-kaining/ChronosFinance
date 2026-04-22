@@ -33,9 +33,12 @@ set -euo pipefail
 # ──────────────────────────────────────────────
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
+ROOT_DIR="$(cd "$PROJECT_DIR/.." && pwd)"
+export COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/docker-compose.yml}"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-chronosfinance}"
 
 # shellcheck disable=SC1091
-set -a; source .env; set +a
+set -a; source "$PROJECT_DIR/../.env"; set +a
 
 APP_PORT="${APP_PORT:-8000}"
 POSTGRES_USER="${POSTGRES_USER:-chronos}"

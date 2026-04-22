@@ -33,6 +33,9 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
+ROOT_DIR="$(cd "$PROJECT_DIR/.." && pwd)"
+export COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/docker-compose.yml}"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-chronosfinance}"
 
 # Close stdin so this script is safe as a background job (no SIGTTIN / “suspended (tty input)” in zsh).
 exec </dev/null
@@ -45,11 +48,11 @@ fi
 
 # shellcheck disable=SC1091
 set -a
-[[ -f .env ]] && source .env
+[[ -f "$PROJECT_DIR/../.env" ]] && source "$PROJECT_DIR/../.env"
 set +a
 
 APP_READ_PORT="${APP_READ_PORT:-${API_PORT:-8000}}"
-APP_WRITE_PORT="${APP_WRITE_PORT:-8001}"
+APP_WRITE_PORT="${APP_WRITE_PORT:-${API_WRITE_PORT:-8001}}"
 POSTGRES_USER="${POSTGRES_USER:-chronos}"
 POSTGRES_DB="${POSTGRES_DB:-chronos_finance}"
 READ_API_BASE="http://localhost:${APP_READ_PORT}"
