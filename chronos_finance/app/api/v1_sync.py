@@ -331,3 +331,112 @@ async def trigger_filings_sync(
 async def trigger_macro_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
     bg.add_task(_run_job, "macro_indicators", sync_macro_indicators)
     return _accepted("Macro-indicators sync queued.")
+
+
+# ── Phase 6 — premium datasets ────────────────────────────────
+@router.post("/market/market-cap", response_model=SyncTriggerResponse,
+             summary="Sync historical daily market capitalisation",
+             description="Pulls /historical-market-capitalization per symbol. "
+                         "Incremental: uses cursor_date to only fetch new data.")
+async def trigger_market_cap_sync(
+    bg: BackgroundTasks,
+    symbol: str | None = Query(None, min_length=1, description="Optional ticker symbol, e.g. AAPL"),
+) -> SyncTriggerResponse:
+    if symbol:
+        return _queue_symbol_dataset(bg, "symbol.daily_market_cap", symbol, "Market-cap")
+    # Full universe: orchestrate via run_dataset
+    bg.add_task(_run_dataset_job, "symbol.daily_market_cap", None)
+    return _accepted("Market-cap sync queued (full active universe).")
+
+
+@router.post("/market/float", response_model=SyncTriggerResponse,
+             summary="Sync share float data",
+             description="Pulls /shares-float per symbol and updates "
+                         "stock_universe float columns in place.")
+async def trigger_float_sync(
+    bg: BackgroundTasks,
+    symbol: str | None = Query(None, min_length=1, description="Optional ticker symbol, e.g. AAPL"),
+) -> SyncTriggerResponse:
+    if symbol:
+        return _queue_symbol_dataset(bg, "symbol.share_float", symbol, "Share-float")
+    bg.add_task(_run_dataset_job, "symbol.share_float", None)
+    return _accepted("Share-float sync queued (full active universe).")
+
+
+@router.post("/alpha/filings-10q", response_model=SyncTriggerResponse,
+             summary="Sync 10-Q quarterly filings",
+             description="Pulls /financial-reports-json for quarterly 10-Q reports. "
+                         "Incremental: skips (year, quarter) already in sec_files.")
+async def trigger_filings_10q_sync(
+    bg: BackgroundTasks,
+    symbol: str | None = Query(None, min_length=1, description="Optional ticker symbol, e.g. AAPL"),
+) -> SyncTriggerResponse:
+    if symbol:
+        return _queue_symbol_dataset(bg, "symbol.alpha.sec_filings_10q", symbol, "SEC-10Q")
+    bg.add_task(_run_dataset_job, "symbol.alpha.sec_filings_10q", None)
+    return _accepted("SEC 10-Q filings sync queued (full active universe).")
+
+
+@router.post("/alpha/filings-8k", response_model=SyncTriggerResponse,
+             summary="Sync 8-K current-event filings",
+             description="Pulls /sec_filings?type=8-K per symbol. "
+                         "Incremental: only fetches filings after the most recent one in DB.")
+async def trigger_filings_8k_sync(
+    bg: BackgroundTasks,
+    symbol: str | None = Query(None, min_length=1, description="Optional ticker symbol, e.g. AAPL"),
+) -> SyncTriggerResponse:
+    if symbol:
+        return _queue_symbol_dataset(bg, "symbol.alpha.sec_filings_8k", symbol, "SEC-8K")
+    bg.add_task(_run_dataset_job, "symbol.alpha.sec_filings_8k", None)
+    return _accepted("SEC 8-K filings sync queued (full active universe).")
+
+
+@router.post("/financials/dcf", response_model=SyncTriggerResponse,
+             summary="Sync advanced DCF valuation",
+             description="Pulls /advanced-levered-discounted-cash-flow per symbol. "
+                         "Incremental: skips fiscal years already in valuation_dcf.")
+async def trigger_dcf_sync(
+    bg: BackgroundTasks,
+    symbol: str | None = Query(None, min_length=1, description="Optional ticker symbol, e.g. AAPL"),
+) -> SyncTriggerResponse:
+    if symbol:
+        return _queue_symbol_dataset(bg, "symbol.valuation.dcf", symbol, "DCF-valuation")
+    bg.add_task(_run_dataset_job, "symbol.valuation.dcf", None)
+    return _accepted("DCF valuation sync queued (full active universe).")
+
+
+@router.post("/global/sectors", response_model=SyncTriggerResponse,
+             summary="Sync sector performance & P/E ratios",
+             description="Pulls /historical-sectors-performance and /sector_price_earning_ratio. "
+                         "Incremental: uses from= parameter to only fetch new dates.")
+async def trigger_sectors_sync(bg: BackgroundTasks) -> SyncTriggerResponse:
+    bg.add_task(_run_dataset_job, "global.sector_performance", None)
+    return _accepted("Sector performance sync queued.")
+
+
+@router.post("/company/employees", response_model=SyncTriggerResponse,
+             summary="Sync historical employee count",
+             description="Pulls /historical/employee_count per symbol. "
+                         "Incremental: uses MAX(date) to only fetch new records.")
+async def trigger_employees_sync(
+    bg: BackgroundTasks,
+    symbol: str | None = Query(None, min_length=1, description="Optional ticker symbol, e.g. AAPL"),
+) -> SyncTriggerResponse:
+    if symbol:
+        return _queue_symbol_dataset(bg, "symbol.company_employees_history", symbol, "Employee-history")
+    bg.add_task(_run_dataset_job, "symbol.company_employees_history", None)
+    return _accepted("Employee history sync queued (full active universe).")
+
+
+@router.post("/alpha/equity-offerings", response_model=SyncTriggerResponse,
+             summary="Sync equity offering events",
+             description="Pulls /equity-offering-search per symbol. "
+                         "Incremental: uses MAX(filing_date) to only fetch new offerings.")
+async def trigger_equity_offerings_sync(
+    bg: BackgroundTasks,
+    symbol: str | None = Query(None, min_length=1, description="Optional ticker symbol, e.g. AAPL"),
+) -> SyncTriggerResponse:
+    if symbol:
+        return _queue_symbol_dataset(bg, "symbol.alpha.equity_offerings", symbol, "Equity-offerings")
+    bg.add_task(_run_dataset_job, "symbol.alpha.equity_offerings", None)
+    return _accepted("Equity offerings sync queued (full active universe).")

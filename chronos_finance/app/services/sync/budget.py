@@ -71,11 +71,17 @@ async def should_throttle(quota_class: str) -> BudgetDecision:
             bytes_limit=usage.bytes_limit,
         )
 
-    medium_threshold = float(settings.FMP_BANDWIDTH_MEDIUM_THROTTLE_RATIO)
-    heavy_threshold = float(settings.FMP_BANDWIDTH_HEAVY_THROTTLE_RATIO)
+    # heavy_only_threshold: only heavy datasets are throttled.
+    # medium_heavy_threshold: both medium and heavy are throttled.
+    # Invariant: heavy_only_threshold <= medium_heavy_threshold <= 1.0
+    # so that heavy gets throttled first, then medium joins at higher usage.
+    heavy_only_threshold = float(settings.FMP_BANDWIDTH_HEAVY_THROTTLE_RATIO)
+    medium_heavy_threshold = float(settings.FMP_BANDWIDTH_MEDIUM_THROTTLE_RATIO)
+    if heavy_only_threshold > medium_heavy_threshold:
+        heavy_only_threshold, medium_heavy_threshold = medium_heavy_threshold, heavy_only_threshold
     q = (quota_class or "").lower()
 
-    if ratio >= medium_threshold and q in {"medium", "heavy"}:
+    if ratio >= medium_heavy_threshold and q in {"medium", "heavy"}:
         return BudgetDecision(
             throttled=True,
             reason="near bandwidth cap; medium/heavy throttled",
@@ -83,7 +89,7 @@ async def should_throttle(quota_class: str) -> BudgetDecision:
             bytes_used=usage.bytes_used,
             bytes_limit=usage.bytes_limit,
         )
-    if ratio >= heavy_threshold and q == "heavy":
+    if ratio >= heavy_only_threshold and q == "heavy":
         return BudgetDecision(
             throttled=True,
             reason="near bandwidth cap; heavy throttled",

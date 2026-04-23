@@ -51,6 +51,10 @@ class DatasetSpec:
     priority_tier: str = "P0"
     description: str = ""
     config: dict[str, Any] = field(default_factory=dict)
+    # StockUniverse column name for backward-compatible legacy sync flag.
+    # When set, the orchestrator flips this boolean flag to True on success
+    # so the legacy /api/v1/sync/* routes stay consistent.
+    legacy_flag: str | None = None
 
 
 # --- Handler imports are done lazily to avoid circular imports at module
@@ -58,11 +62,18 @@ class DatasetSpec:
 # modules import the orchestrator's types.
 def _build_registry() -> list[DatasetSpec]:
     from app.services.sync.datasets import (
+        daily_market_cap,
         daily_prices,
         earnings_calendar,
+        employees_history,
+        equity_offerings,
         global_reference,
+        sec_filings_ext,
+        sector_performance,
+        share_float,
         symbol_alpha,
         symbol_financials,
+        valuation_dcf,
         symbol_events,
     )
 
@@ -95,6 +106,7 @@ def _build_registry() -> list[DatasetSpec]:
                 "endpoint": "/historical-price-eod/full",
                 "overlap_days": 5,
             },
+            legacy_flag="prices_synced",
         ),
         DatasetSpec(
             key="symbol.corporate_actions",
@@ -106,6 +118,7 @@ def _build_registry() -> list[DatasetSpec]:
             priority_tier="P0",
             description="Symbol dividends + splits history.",
             config={"overlap_days": 30},
+            legacy_flag="actions_synced",
         ),
         DatasetSpec(
             key="symbol.earnings_history",
@@ -116,6 +129,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="light",
             priority_tier="P0",
             description="Symbol earnings history from /earnings.",
+            legacy_flag="earnings_synced",
         ),
         DatasetSpec(
             key="symbol.financials.income_statement",
@@ -126,6 +140,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="medium",
             priority_tier="P0",
             description="Annual income statements -> static_financials.",
+            legacy_flag="income_synced",
         ),
         DatasetSpec(
             key="symbol.financials.balance_sheet",
@@ -136,6 +151,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="medium",
             priority_tier="P0",
             description="Annual balance sheets -> static_financials.",
+            legacy_flag="balance_synced",
         ),
         DatasetSpec(
             key="symbol.financials.cash_flow",
@@ -146,6 +162,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="medium",
             priority_tier="P0",
             description="Annual cash flow statements -> static_financials.",
+            legacy_flag="cashflow_synced",
         ),
         DatasetSpec(
             key="symbol.financials.ratios",
@@ -156,6 +173,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="medium",
             priority_tier="P0",
             description="Annual ratios -> static_financials.",
+            legacy_flag="ratios_synced",
         ),
         DatasetSpec(
             key="symbol.financials.metrics",
@@ -166,6 +184,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="medium",
             priority_tier="P0",
             description="Annual key metrics -> static_financials.",
+            legacy_flag="metrics_synced",
         ),
         DatasetSpec(
             key="symbol.financials.scores",
@@ -176,6 +195,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="light",
             priority_tier="P1",
             description="Financial scores snapshot -> static_financials.",
+            legacy_flag="scores_synced",
         ),
         DatasetSpec(
             key="symbol.financials.enterprise_values",
@@ -186,6 +206,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="medium",
             priority_tier="P0",
             description="Annual enterprise values -> static_financials.",
+            legacy_flag="ev_synced",
         ),
         DatasetSpec(
             key="symbol.financials.executive_compensation",
@@ -196,6 +217,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="medium",
             priority_tier="P1",
             description="Executive compensation grouped by fiscal year.",
+            legacy_flag="compensation_synced",
         ),
         DatasetSpec(
             key="symbol.financials.revenue_segmentation",
@@ -206,6 +228,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="medium",
             priority_tier="P1",
             description="Product + geographic revenue segmentation.",
+            legacy_flag="segments_synced",
         ),
         DatasetSpec(
             key="symbol.financials.stock_peers",
@@ -216,6 +239,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="light",
             priority_tier="P1",
             description="Stock peers snapshot.",
+            legacy_flag="peers_synced",
         ),
         DatasetSpec(
             key="symbol.alpha.insider_trades",
@@ -227,6 +251,7 @@ def _build_registry() -> list[DatasetSpec]:
             priority_tier="P1",
             description="Insider trades (paginated).",
             config={"max_pages": 5},
+            legacy_flag="insider_synced",
         ),
         DatasetSpec(
             key="symbol.alpha.analyst_estimates",
@@ -237,6 +262,7 @@ def _build_registry() -> list[DatasetSpec]:
             quota_class="medium",
             priority_tier="P1",
             description="Analyst estimates + price target consensus.",
+            legacy_flag="estimates_synced",
         ),
         DatasetSpec(
             key="symbol.alpha.sec_filings_10k",
@@ -248,6 +274,7 @@ def _build_registry() -> list[DatasetSpec]:
             priority_tier="P2",
             description="SEC financial reports JSON (10-K).",
             config={"years": 5, "form_type": "10-K"},
+            legacy_flag="filings_synced",
         ),
         DatasetSpec(
             key="symbol.alpha.stock_news",
@@ -271,6 +298,88 @@ def _build_registry() -> list[DatasetSpec]:
             description="Company press releases per symbol.",
             config={"limit": 200},
         ),
+
+        # ── Phase 6 — premium datasets ──────────────────────────────
+        DatasetSpec(
+            key="symbol.daily_market_cap",
+            scope="symbol",
+            handler=daily_market_cap.run,
+            cadence_seconds=6 * 3600,
+            cursor_strategy="date",
+            quota_class="medium",
+            priority_tier="P1",
+            description="Historical daily market capitalisation per symbol.",
+            config={"overlap_days": 5, "limit": 5000},
+            legacy_flag="market_cap_synced",
+        ),
+        DatasetSpec(
+            key="symbol.share_float",
+            scope="symbol",
+            handler=share_float.run,
+            cadence_seconds=24 * 3600,
+            cursor_strategy="snapshot",
+            quota_class="light",
+            priority_tier="P1",
+            description="Company share float data -> stock_universe float columns.",
+            legacy_flag="float_synced",
+        ),
+        DatasetSpec(
+            key="symbol.alpha.sec_filings_10q",
+            scope="symbol",
+            handler=sec_filings_ext.run_10q,
+            cadence_seconds=24 * 3600,
+            cursor_strategy="fiscal_period",
+            quota_class="heavy",
+            priority_tier="P2",
+            description="10-Q quarterly filings structured JSON -> sec_files.",
+            config={"years": 3},
+        ),
+        DatasetSpec(
+            key="symbol.alpha.sec_filings_8k",
+            scope="symbol",
+            handler=sec_filings_ext.run_8k,
+            cadence_seconds=12 * 3600,
+            cursor_strategy="event_window",
+            quota_class="medium",
+            priority_tier="P2",
+            description="8-K current-event filings metadata -> sec_files.",
+            config={"limit": 200},
+        ),
+        DatasetSpec(
+            key="symbol.valuation.dcf",
+            scope="symbol",
+            handler=valuation_dcf.run,
+            cadence_seconds=24 * 3600,
+            cursor_strategy="date",
+            quota_class="medium",
+            priority_tier="P1",
+            description="Historical daily DCF valuation per symbol (valuation thermometer).",
+            config={"overlap_days": 5, "limit": 5000},
+            legacy_flag="dcf_synced",
+        ),
+        DatasetSpec(
+            key="symbol.company_employees_history",
+            scope="symbol",
+            handler=employees_history.run,
+            cadence_seconds=24 * 3600,
+            cursor_strategy="date",
+            quota_class="light",
+            priority_tier="P1",
+            description="Historical employee count per symbol.",
+            config={"overlap_days": 30, "limit": 5000},
+        ),
+        DatasetSpec(
+            key="symbol.alpha.equity_offerings",
+            scope="symbol",
+            handler=equity_offerings.run,
+            cadence_seconds=24 * 3600,
+            cursor_strategy="date",
+            quota_class="light",
+            priority_tier="P1",
+            description="Equity offering events (secondary offerings, follow-on).",
+            config={"overlap_days": 30, "limit": 1000},
+        ),
+
         DatasetSpec(
             key="global.dividends_calendar",
             scope="global",
@@ -387,6 +496,16 @@ def _build_registry() -> list[DatasetSpec]:
                     {"series_id": "2Year", "display_name": "US 2Y Treasury", "category": "rates", "frequency": "daily"},
                 ]
             },
+        ),
+        DatasetSpec(
+            key="global.sector_performance",
+            scope="global",
+            handler=sector_performance.run,
+            cadence_seconds=6 * 3600,
+            cursor_strategy="date",
+            quota_class="light",
+            priority_tier="P1",
+            description="Historical sector performance (return %) and P/E ratios.",
         ),
     ]
 

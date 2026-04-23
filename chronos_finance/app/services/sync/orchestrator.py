@@ -17,12 +17,13 @@ unit-testing straightforward.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.database import async_session_factory
@@ -32,6 +33,11 @@ from app.services.sync.budget import BudgetDecision, should_throttle
 from app.services.sync.registry import DatasetSpec, get_dataset_spec
 
 logger = logging.getLogger(__name__)
+
+# Maximum number of symbols processed concurrently within a single dataset
+# run.  The FMP rate limiter (750 calls/60s) is the true bottleneck, so this
+# just keeps DB I/O overlapping with network waits.
+_SYMBOL_CONCURRENCY = 10
 
 
 # ─────────────────────────── public types ───────────────────────────
@@ -134,10 +140,11 @@ async def run_dataset(
             summary["finished_at"] = _utcnow().isoformat()
             return summary
         target_symbols = await _resolve_symbols(symbols=symbols, single=symbol)
-        per_symbol: list[tuple[str, _RunOutcome]] = []
-        for sym in target_symbols:
-            per_symbol.append(
-                (
+        semaphore = asyncio.Semaphore(_SYMBOL_CONCURRENCY)
+
+        async def _run_with_sem(sym: str) -> tuple[str, _RunOutcome]:
+            async with semaphore:
+                return (
                     sym,
                     await _run_single(
                         spec,
@@ -146,7 +153,24 @@ async def run_dataset(
                         budget_decision=budget_decision,
                     ),
                 )
-            )
+
+        raw_results = await asyncio.gather(
+            *[_run_with_sem(sym) for sym in target_symbols],
+            return_exceptions=True,
+        )
+        per_symbol: list[tuple[str, _RunOutcome]] = []
+        for i, r in enumerate(raw_results):
+            if isinstance(r, BaseException):
+                sym = target_symbols[i]
+                logger.exception(
+                    "dataset %s symbol=%s unexpected gather error: %s",
+                    dataset_key, sym, r,
+                )
+                per_symbol.append(
+                    (sym, _RunOutcome(status="failed", error_message=str(r)[:2000]))
+                )
+            else:
+                per_symbol.append(r)
         summary = _summarise([r for _, r in per_symbol])
         summary["symbols_total"] = len(target_symbols)
 
@@ -290,9 +314,14 @@ async def _run_single(
         result=result,
         finished_at=finished_at,
         previous=previous,
-        status="ok" if status == "ok" else "idle",
+        status=status,
         update_success_at=is_real_success,
     )
+
+    # Flip the legacy stock_universe.*_synced flag so the old /api/v1/sync/*
+    # routes stay consistent during the migration period.
+    if status == "ok" and spec.legacy_flag and symbol != GLOBAL_SYMBOL_SENTINEL:
+        await _flip_legacy_flag(spec.legacy_flag, symbol)
 
     return _RunOutcome(
         status=status,
@@ -411,7 +440,12 @@ async def _commit_state(
         fresh_until = finished_at + timedelta(seconds=spec.cadence_seconds)
     else:
         success_at = previous.last_success_at if previous else None
-        fresh_until = previous.fresh_until if previous else None
+        # For "empty" skips, still set fresh_until so the scheduler doesn't
+        # immediately retry a symbol that genuinely has no data upstream.
+        if result.skipped_reason == "empty":
+            fresh_until = finished_at + timedelta(seconds=spec.cadence_seconds)
+        else:
+            fresh_until = previous.fresh_until if previous else None
 
     row = {
         "dataset_key": spec.key,
@@ -491,6 +525,23 @@ async def _mark_state_status(
             },
         )
         await session.execute(stmt)
+        await session.commit()
+
+
+async def _flip_legacy_flag(flag_name: str, symbol: str) -> None:
+    """Flip a stock_universe boolean sync flag for backward compatibility."""
+    from app.models.stock_universe import StockUniverse
+
+    flag_column = getattr(StockUniverse, flag_name, None)
+    if flag_column is None:
+        logger.warning("legacy_flag %r not found on StockUniverse", flag_name)
+        return
+    async with async_session_factory() as session:
+        await session.execute(
+            update(StockUniverse)
+            .where(StockUniverse.symbol == symbol)
+            .values({flag_column: True})
+        )
         await session.commit()
 
 

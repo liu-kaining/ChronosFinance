@@ -5,6 +5,8 @@ from app.models.alpha import (
     SECFile,
     StockNews,
 )
+from app.models.employees import CompanyEmployeesHistory
+from app.models.equity import EquityOffering
 from app.models.macro import MacroEconomic, MacroSeriesCatalog, TreasuryRateWide
 from app.models.market import (
     CorporateAction,
@@ -15,6 +17,8 @@ from app.models.market import (
     IPOCalendar,
     SplitCalendarGlobal,
 )
+from app.models.market_cap import DailyMarketCap
+from app.models.sector import SectorPerformanceSeries
 from app.models.static_financials import StaticFinancials
 from app.models.stock_universe import StockUniverse
 from app.models.sync_control import (
@@ -23,11 +27,13 @@ from app.models.sync_control import (
     SyncRun,
     SyncState,
 )
+from app.models.valuation import ValuationDCF
 
 __all__ = [
     "StockUniverse",
     "StaticFinancials",
     "DailyPrice",
+    "DailyMarketCap",
     "CorporateAction",
     "EarningsCalendar",
     "DividendCalendarGlobal",
@@ -42,6 +48,10 @@ __all__ = [
     "MacroEconomic",
     "MacroSeriesCatalog",
     "TreasuryRateWide",
+    "ValuationDCF",
+    "SectorPerformanceSeries",
+    "CompanyEmployeesHistory",
+    "EquityOffering",
     "SyncDataset",
     "SyncState",
     "SyncRun",

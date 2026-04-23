@@ -163,11 +163,11 @@ async def trigger_dataset_run(
     bg.add_task(
         _run_background,
         f"ingest::{dataset_key}",
-        lambda: run_dataset(
-            dataset_key,
-            symbol=target_symbol,
-            symbols=target_symbols,
-            trigger=trigger,
+        lambda dk=dataset_key, s=target_symbol, ss=target_symbols, t=trigger: run_dataset(
+            dk,
+            symbol=s,
+            symbols=ss,
+            trigger=t,
         ),
     )
 

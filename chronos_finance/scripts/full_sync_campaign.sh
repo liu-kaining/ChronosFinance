@@ -96,12 +96,27 @@ TRUNCATE TABLE
   stock_universe,
   static_financials,
   daily_prices,
+  daily_market_cap,
   corporate_actions,
   earnings_calendar,
+  dividend_calendar_global,
+  split_calendar_global,
+  ipo_calendar,
+  economic_calendar,
   insider_trades,
   analyst_estimates,
   sec_files,
-  macro_economics
+  stock_news,
+  company_press_releases,
+  macro_economics,
+  macro_series_catalog,
+  treasury_rates_wide,
+  valuation_dcf,
+  sector_performance_series,
+  company_employees_history,
+  equity_offerings,
+  sync_state,
+  sync_runs
 RESTART IDENTITY CASCADE;
 SQL
   log "Truncate done."
@@ -171,6 +186,10 @@ keys = [
     'active_with_insider_synced',
     'active_with_estimates_synced',
     'active_with_filings_synced',
+    # Phase 6 — premium datasets
+    'active_with_float_synced',
+    'active_with_market_cap_synced',
+    'active_with_dcf_synced',
 ]
 if os.environ.get('FULL_SYNC_SKIP_FILINGS', '0') == '1':
     keys = [k for k in keys if k != 'active_with_filings_synced']
@@ -185,8 +204,13 @@ queue_all_sync_jobs() {
   local paths=(
     financials/income financials/balance financials/cashflow
     ratios metrics scores enterprise-values compensation segments peers
-    market/prices market/actions events/earnings
+    market/prices market/actions market/market-cap market/float
+    events/earnings
     alpha/insider alpha/estimates
+    alpha/filings-10q alpha/filings-8k alpha/equity-offerings
+    financials/dcf
+    company/employees
+    global/sectors
     macro/indicators
   )
   if [[ "$SKIP_FILINGS" != "1" ]]; then

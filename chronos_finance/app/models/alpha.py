@@ -77,9 +77,13 @@ class AnalystEstimate(Base):
 
 class SECFile(Base):
     """
-    10-K / 10-Q structured JSON text blocks from FMP.
-    `raw_content` holds the full section tree as returned by
-    /financial-reports-json so downstream NLP can address any section.
+    10-K / 10-Q / 8-K SEC filings with R2 cold storage.
+
+    Cold-hot separation architecture:
+    - `storage_path`: R2 object path (cold storage for large JSON payloads)
+    - `raw_content`: Optional in-DB cache for frequently accessed filings (nullable)
+
+    R2 path convention: sec_filings/{symbol}/{form_type}/{fiscal_year}_{fiscal_period}.json
     """
     __tablename__ = "sec_files"
     __table_args__ = (
@@ -89,15 +93,19 @@ class SECFile(Base):
             postgresql_nulls_not_distinct=True,
         ),
         Index("ix_sec_file_symbol_form", "symbol", "form_type"),
+        Index("ix_sec_file_storage_path", "storage_path"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)
-    form_type: Mapped[str] = mapped_column(String(16), nullable=False, comment="'10-K' or '10-Q'")
+    form_type: Mapped[str] = mapped_column(String(16), nullable=False, comment="'10-K' or '10-Q' or '8-K'")
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
-    fiscal_period: Mapped[str] = mapped_column(String(4), nullable=False, comment="'FY' | 'Q1'..'Q4'")
+    fiscal_period: Mapped[str] = mapped_column(String(16), nullable=False, comment="'FY' | 'Q1'..'Q4' | date for 8-K")
     filing_date: Mapped[date | None] = mapped_column(Date)
-    raw_content: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # R2 cold storage path (primary storage location)
+    storage_path: Mapped[str | None] = mapped_column(String(255), comment="R2 object path, e.g. sec_filings/AAPL/10-K/2023_FY.json")
+    # Optional in-DB cache (nullable, may be purged for cold storage)
+    raw_content: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

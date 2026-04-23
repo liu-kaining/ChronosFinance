@@ -136,6 +136,10 @@ async def sync_progress() -> SyncProgressResponse:
             active_with_insider_synced=await ac(StockUniverse.insider_synced),
             active_with_estimates_synced=await ac(StockUniverse.estimates_synced),
             active_with_filings_synced=await ac(StockUniverse.filings_synced),
+            # Phase 6 — premium datasets
+            active_with_float_synced=await ac(StockUniverse.float_synced),
+            active_with_market_cap_synced=await ac(StockUniverse.market_cap_synced),
+            active_with_dcf_synced=await ac(StockUniverse.dcf_synced),
         )
 
 

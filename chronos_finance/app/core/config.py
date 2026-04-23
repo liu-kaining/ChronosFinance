@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     #   CORS_ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173,http://web
     CORS_ALLOW_ORIGINS: str = "*"
 
+    # Cloudflare R2 Storage (S3-compatible)
+    R2_ENDPOINT_URL: str = ""  # e.g. https://<account_id>.r2.cloudflarestorage.com
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = "chronos-sec-filings"
+    R2_REGION: str = "auto"  # R2 uses 'auto'
+
     @property
     def async_database_url(self) -> str:
         return (

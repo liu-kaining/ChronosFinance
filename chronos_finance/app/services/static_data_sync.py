@@ -83,18 +83,21 @@ async def sync_stock_universe() -> dict:
         logger.warning("Screener returned 0 rows — aborting without touching DB")
         return {"screener_hits": 0, "upserted": 0, "deactivated": 0}
 
-    # ── Step 1: upsert the golden set ─────────────────────────
+    # ── Step 1: upsert the golden set (batched) ────────────────
+    _UPSERT_UPDATE_COLS = (
+        "company_name", "exchange", "exchange_short_name", "sector",
+        "industry", "market_cap", "is_etf", "is_actively_trading", "raw_payload",
+    )
     active_symbols: set[str] = set()
     upserted = 0
     async with async_session_factory() as session:
-        for i, stock in enumerate(raw_list, start=1):
+        batch: list[dict] = []
+        for stock in raw_list:
             symbol = stock.get("symbol")
             if not symbol:
                 continue
             active_symbols.add(symbol)
-
-            # Screener returns `companyName`; /stock/list used `name`. Accept either.
-            values = {
+            batch.append({
                 "symbol": symbol,
                 "company_name": stock.get("companyName") or stock.get("name"),
                 "exchange": stock.get("exchange"),
@@ -105,16 +108,25 @@ async def sync_stock_universe() -> dict:
                 "is_etf": stock.get("isEtf", False),
                 "is_actively_trading": True,
                 "raw_payload": stock,
-            }
-            stmt = pg_insert(StockUniverse).values(**values).on_conflict_do_update(
+            })
+            if len(batch) >= UNIVERSE_BATCH_SIZE:
+                stmt = pg_insert(StockUniverse).values(batch)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["symbol"],
+                    set_={c: getattr(stmt.excluded, c) for c in _UPSERT_UPDATE_COLS},
+                )
+                await session.execute(stmt)
+                upserted += len(batch)
+                logger.info("Universe upsert progress: %d / %d", upserted, total)
+                batch = []
+        if batch:
+            stmt = pg_insert(StockUniverse).values(batch)
+            stmt = stmt.on_conflict_do_update(
                 index_elements=["symbol"],
-                set_={k: v for k, v in values.items() if k != "symbol"},
+                set_={c: getattr(stmt.excluded, c) for c in _UPSERT_UPDATE_COLS},
             )
             await session.execute(stmt)
-            upserted += 1
-
-            if i % UNIVERSE_BATCH_SIZE == 0:
-                logger.info("Universe upsert progress: %d / %d", i, total)
+            upserted += len(batch)
 
         # ── Step 2: deactivate symbols NOT in the screener result ──
         # Done in the same session so a mid-way crash never leaves all

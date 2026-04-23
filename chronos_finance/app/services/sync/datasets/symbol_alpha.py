@@ -308,7 +308,7 @@ async def run_stock_news(ctx: DatasetContext) -> DatasetResult:
     max_published: datetime | None = None
     for item in entries:
         published_dt = _parse_datetime(item.get("publishedDate") or item.get("publishedDateTime"))
-        if max_published is None or (published_dt and published_dt > max_published):
+        if published_dt is not None and (max_published is None or published_dt > max_published):
             max_published = published_dt
         rows.append(
             {
@@ -367,7 +367,7 @@ async def run_press_releases(ctx: DatasetContext) -> DatasetResult:
     max_published: datetime | None = None
     for item in entries:
         published_dt = _parse_datetime(item.get("publishedDate") or item.get("publishedDateTime"))
-        if max_published is None or (published_dt and published_dt > max_published):
+        if published_dt is not None and (max_published is None or published_dt > max_published):
             max_published = published_dt
         rows.append(
             {

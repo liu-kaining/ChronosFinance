@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,6 +22,11 @@ class StockUniverse(Base):
     market_cap: Mapped[float | None]
     is_etf: Mapped[bool] = mapped_column(Boolean, default=False)
     is_actively_trading: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    # Share float data (Company Share Float API)
+    free_float: Mapped[float | None] = mapped_column(Float, comment="free float percentage")
+    float_shares: Mapped[int | None] = mapped_column(BigInteger, comment="float shares count")
+    outstanding_shares: Mapped[int | None] = mapped_column(BigInteger, comment="total outstanding shares")
 
     # Resumable sync flags — flipped to True after that dataset
     # has been persisted for this symbol.
@@ -75,6 +80,16 @@ class StockUniverse(Base):
         Boolean, default=False, server_default="false", nullable=False, index=True
     )
     filings_synced: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False, index=True
+    )
+    # Phase 6 — premium datasets
+    float_synced: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False, index=True
+    )
+    market_cap_synced: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False, index=True
+    )
+    dcf_synced: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False, index=True
     )
 

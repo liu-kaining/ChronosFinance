@@ -23,7 +23,7 @@ def content_hash(payload: Any) -> str:
         default=_json_default,
         separators=(",", ":"),
     ).encode("utf-8")
-    return hashlib.sha1(blob).hexdigest()
+    return hashlib.sha256(blob).hexdigest()
 
 
 def _json_default(obj: Any) -> Any:

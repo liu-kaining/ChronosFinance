@@ -38,21 +38,23 @@ class RateLimiter:
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
-        async with self._lock:
-            now = time.monotonic()
-            while self._timestamps and self._timestamps[0] <= now - self._period:
-                self._timestamps.popleft()
-
-            if len(self._timestamps) >= self._max_calls:
-                sleep_for = self._period - (now - self._timestamps[0]) + 0.05
-                if sleep_for > 0:
-                    logger.debug("Rate limit reached, sleeping %.2fs", sleep_for)
-                    await asyncio.sleep(sleep_for)
+        while True:
+            sleep_for = 0.0
+            async with self._lock:
                 now = time.monotonic()
                 while self._timestamps and self._timestamps[0] <= now - self._period:
                     self._timestamps.popleft()
 
-            self._timestamps.append(time.monotonic())
+                if len(self._timestamps) < self._max_calls:
+                    self._timestamps.append(time.monotonic())
+                    return
+                # Need to wait — compute delay, then release lock before sleeping
+                # so other coroutines aren't blocked unnecessarily.
+                sleep_for = self._period - (now - self._timestamps[0]) + 0.05
+
+            if sleep_for > 0:
+                logger.debug("Rate limit reached, sleeping %.2fs", sleep_for)
+                await asyncio.sleep(sleep_for)
 
 
 _SOFT_ERROR_KEYS = ("Error Message", "error", "errorMessage")

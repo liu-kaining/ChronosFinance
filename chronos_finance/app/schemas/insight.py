@@ -52,6 +52,10 @@ class SyncProgressResponse(BaseModel):
     active_with_insider_synced: int
     active_with_estimates_synced: int
     active_with_filings_synced: int
+    # Phase 6 — premium datasets
+    active_with_float_synced: int
+    active_with_market_cap_synced: int
+    active_with_dcf_synced: int
 
 
 class UniverseRow(BaseModel):
@@ -79,6 +83,10 @@ class UniverseRow(BaseModel):
     insider_synced: bool
     estimates_synced: bool
     filings_synced: bool
+    # Phase 6 — premium datasets
+    float_synced: bool
+    market_cap_synced: bool
+    dcf_synced: bool
 
     model_config = {"from_attributes": True}
 
