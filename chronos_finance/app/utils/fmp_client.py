@@ -102,7 +102,7 @@ class FMPClient:
                     connect=10.0,
                     read=30.0,
                     write=15.0,
-                    pool=5.0,
+                    pool=15.0,
                 ),
                 limits=httpx.Limits(
                     max_connections=20,
@@ -163,7 +163,7 @@ class FMPClient:
                 connect=10.0,
                 read=timeout_read,
                 write=15.0,
-                pool=5.0,
+                pool=15.0,
             )
 
         resp = await client.get(endpoint, **request_kwargs)

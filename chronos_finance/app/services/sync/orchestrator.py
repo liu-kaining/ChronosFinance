@@ -35,9 +35,9 @@ from app.services.sync.registry import DatasetSpec, get_dataset_spec
 logger = logging.getLogger(__name__)
 
 # Maximum number of symbols processed concurrently within a single dataset
-# run.  The FMP rate limiter (750 calls/60s) is the true bottleneck, so this
-# just keeps DB I/O overlapping with network waits.
-_SYMBOL_CONCURRENCY = 10
+# run. Keep this conservative to avoid saturating the shared HTTP connection
+# pool under heavy full-market campaigns.
+_SYMBOL_CONCURRENCY = 4
 
 
 # ─────────────────────────── public types ───────────────────────────
