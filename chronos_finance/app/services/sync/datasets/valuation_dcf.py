@@ -18,6 +18,7 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -64,7 +65,25 @@ async def run(ctx: DatasetContext) -> DatasetResult:
     if cursor is not None:
         params["from"] = (cursor - timedelta(days=overlap_days)).isoformat()
 
-    payload = await fmp_client.get("/historical-discounted-cash-flow", params=params)
+    try:
+        # Stable endpoint currently exposes the latest DCF snapshot via
+        # /discounted-cash-flow (not /historical-discounted-cash-flow).
+        payload = await fmp_client.get("/discounted-cash-flow", params=params)
+    except httpx.HTTPStatusError as exc:
+        if exc.response is not None and exc.response.status_code == 404:
+            return DatasetResult(
+                requests_count=1,
+                bytes_estimated=0,
+                content_hash=content_hash([]),
+                cursor_date=cursor,
+                skipped_reason="empty",
+                details={
+                    "payload_entries": 0,
+                    "from_date": params.get("from"),
+                    "http_status": 404,
+                },
+            )
+        raise
     entries = as_list(payload)
     payload_hash = content_hash(entries)
     bytes_estimated = estimate_bytes(entries)
@@ -102,7 +121,11 @@ async def run(ctx: DatasetContext) -> DatasetResult:
                 "symbol": symbol,
                 "date": d,
                 "dcf": safe_float(entry.get("dcf")),
-                "stock_price": safe_float(entry.get("stockPrice") or entry.get("price")),
+                "stock_price": safe_float(
+                    entry.get("stockPrice")
+                    or entry.get("Stock Price")
+                    or entry.get("price")
+                ),
                 "raw_payload": clean_jsonb(entry),
             }
         )

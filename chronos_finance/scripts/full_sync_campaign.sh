@@ -89,6 +89,36 @@ macro_distinct() {
   psql_exec -tA -c "SELECT COUNT(DISTINCT series_id) FROM macro_economics;"
 }
 
+reconcile_optional_flags_from_sync_state() {
+  # Treat "skipped" as done for datasets where upstream may legitimately have
+  # no payload for some symbols (e.g. DCF / market-cap).
+  psql_exec <<'SQL' >/dev/null
+UPDATE stock_universe su
+SET dcf_synced = true
+WHERE su.is_actively_trading = true
+  AND su.dcf_synced = false
+  AND EXISTS (
+    SELECT 1
+    FROM sync_state ss
+    WHERE ss.dataset_key = 'symbol.valuation.dcf'
+      AND ss.symbol = su.symbol
+      AND ss.status IN ('ok', 'skipped')
+  );
+
+UPDATE stock_universe su
+SET market_cap_synced = true
+WHERE su.is_actively_trading = true
+  AND su.market_cap_synced = false
+  AND EXISTS (
+    SELECT 1
+    FROM sync_state ss
+    WHERE ss.dataset_key = 'symbol.daily_market_cap'
+      AND ss.symbol = su.symbol
+      AND ss.status IN ('ok', 'skipped')
+  );
+SQL
+}
+
 wipe_database() {
   log "First run: truncating all campaign tables …"
   psql_exec <<'SQL'
@@ -287,6 +317,7 @@ while true; do
     die "FULL_SYNC_TIMEOUT_SECS=${TIMEOUT_SECS} elapsed — not finished. Check sync-progress and API logs."
   fi
 
+  reconcile_optional_flags_from_sync_state
   prog="$(curl -sS "${READ_API_BASE}/api/v1/stats/sync-progress")" || die "sync-progress failed"
   mc="$(macro_distinct)"
   mc="${mc//[[:space:]]/}"
