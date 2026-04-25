@@ -261,7 +261,22 @@ async def run_8k(ctx: DatasetContext) -> DatasetResult:
     if from_date:
         params["from"] = from_date.isoformat()
 
-    payload = await fmp_client.get("/sec_filings", params=params)
+    try:
+        payload = await fmp_client.get("/sec_filings", params=params)
+    except httpx.HTTPStatusError as exc:
+        if exc.response is not None and exc.response.status_code == 404:
+            return DatasetResult(
+                requests_count=1,
+                bytes_estimated=0,
+                content_hash=content_hash([]),
+                skipped_reason="empty",
+                details={
+                    "payload_entries": 0,
+                    "from_date": str(from_date) if from_date else None,
+                    "http_status": 404,
+                },
+            )
+        raise
     entries = as_list(payload)
     payload_hash = content_hash(entries)
     bytes_estimated = estimate_bytes(entries)

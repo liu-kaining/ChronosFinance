@@ -28,6 +28,8 @@
 #   FULL_SYNC_MIN_MACRO_SERIES — distinct series_id rows required in macro_economics (default 8)
 #   FULL_SYNC_QUEUE_ONLY — 1 = do not POST/wait on universe (use when active_symbols already set but
 #                          downstream POSTs never ran, e.g. campaign stopped after universe). Implies marker exists.
+#   FULL_SYNC_NO_PROGRESS_POLLS — consecutive no-growth polls to treat campaign as finished when
+#                                 ingest queue has no running tasks (default 4)
 #
 set -euo pipefail
 
@@ -66,6 +68,7 @@ SKIP_FILINGS="${FULL_SYNC_SKIP_FILINGS:-0}"
 RESTART_API="${FULL_SYNC_RESTART_API:-0}"
 MIN_MACRO="${FULL_SYNC_MIN_MACRO_SERIES:-8}"
 QUEUE_ONLY="${FULL_SYNC_QUEUE_ONLY:-0}"
+NO_PROGRESS_POLLS="${FULL_SYNC_NO_PROGRESS_POLLS:-4}"
 
 log() { printf "\033[1;36m[campaign]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m[campaign]\033[0m %s\n" "$*"; }
@@ -230,6 +233,65 @@ sys.exit(1)
 "
 }
 
+progress_total() {
+  printf '%s\n' "$1" | FULL_SYNC_SKIP_FILINGS="$SKIP_FILINGS" python3 -c "
+import json, os, sys
+p = json.load(sys.stdin)
+keys = [
+    'active_with_income_synced',
+    'active_with_balance_synced',
+    'active_with_cashflow_synced',
+    'active_with_ratios_synced',
+    'active_with_metrics_synced',
+    'active_with_scores_synced',
+    'active_with_ev_synced',
+    'active_with_compensation_synced',
+    'active_with_segments_synced',
+    'active_with_peers_synced',
+    'active_with_prices_synced',
+    'active_with_actions_synced',
+    'active_with_earnings_synced',
+    'active_with_insider_synced',
+    'active_with_estimates_synced',
+    'active_with_filings_synced',
+    'active_with_float_synced',
+    'active_with_market_cap_synced',
+    'active_with_dcf_synced',
+]
+if os.environ.get('FULL_SYNC_SKIP_FILINGS', '0') == '1':
+    keys = [k for k in keys if k != 'active_with_filings_synced']
+print(sum(int(p.get(k) or 0) for k in keys))
+"
+}
+
+running_ingest_jobs() {
+  local runs_json
+  if ! runs_json="$(curl -sS "${WRITE_API_BASE}/api/v1/ingest/runs?limit=200")"; then
+    # If queue status cannot be fetched, fail open as "still running".
+    echo "1"
+    return 0
+  fi
+
+  printf '%s\n' "$runs_json" | python3 -c "
+import json, sys
+payload = json.load(sys.stdin)
+items = payload.get('items') or []
+print(sum(1 for i in items if i.get('status') == 'running'))
+"
+}
+
+restart_write_api_service() {
+  docker-compose restart api-write
+  sleep 5
+  for _ in $(seq 1 30); do
+    if curl -sf "${WRITE_API_BASE}/health" > /dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 queue_all_sync_jobs() {
   local paths=(
     financials/income financials/balance financials/cashflow
@@ -277,15 +339,7 @@ fi
 
 if [[ "$RESTART_API" == "1" ]]; then
   warn "FULL_SYNC_RESTART_API=1 — restarting api-write to clear duplicate background tasks …"
-  docker-compose restart api-write
-  sleep 5
-  for _ in $(seq 1 30); do
-    if curl -sf "${WRITE_API_BASE}/health" > /dev/null; then
-      break
-    fi
-    sleep 2
-  done
-  curl -sf "${WRITE_API_BASE}/health" > /dev/null || die "Write API did not come back after restart"
+  restart_write_api_service || die "Write API did not come back after restart"
 fi
 
 log "DB: earnings_calendar.fiscal_period_end nullable (idempotent)"
@@ -310,6 +364,8 @@ log "Poll until every active symbol has all required flags and macro_economics i
 log "Tip: docker-compose logs -f api-write"
 start_ts="$(date +%s)"
 last_macro_nudge=0
+last_progress_total=-1
+stalled_polls=0
 
 while true; do
   now="$(date +%s)"
@@ -325,7 +381,15 @@ while true; do
   sym_line="$(echo "$prog" | python3 -c "import json,sys; p=json.load(sys.stdin); a=p['active_symbols']; print('income %s/%s prices %s/%s filings %s/%s' % (p['active_with_income_synced'], a, p['active_with_prices_synced'], a, p['active_with_filings_synced'], a))")"
   sym_line="${sym_line} macro_series(distinct)=${mc}"
 
-  log "progress: $sym_line"
+  current_progress_total="$(progress_total "$prog")"
+  if (( last_progress_total >= 0 && current_progress_total <= last_progress_total )); then
+    stalled_polls=$((stalled_polls + 1))
+  else
+    stalled_polls=0
+  fi
+  last_progress_total="$current_progress_total"
+
+  log "progress: $sym_line aggregate_progress=${current_progress_total} stalled=${stalled_polls}/${NO_PROGRESS_POLLS}"
 
   sym_done=0
   if symbols_incomplete "$prog"; then
@@ -335,9 +399,24 @@ while true; do
   fi
 
   if (( sym_done == 1 )) && (( mc >= MIN_MACRO )); then
-    log "Campaign complete — all required symbol flags and macro (>= ${MIN_MACRO} series)."
-    curl -sS "${READ_API_BASE}/api/v1/stats/overview" | python3 -m json.tool || true
-    exit 0
+    running_jobs="$(running_ingest_jobs)"
+    running_jobs="${running_jobs//[[:space:]]/}"
+    if (( running_jobs == 0 )); then
+      log "Campaign complete — all required symbol flags + macro (>= ${MIN_MACRO}) and no running ingest jobs."
+      curl -sS "${READ_API_BASE}/api/v1/stats/overview" | python3 -m json.tool || true
+      exit 0
+    fi
+    warn "Flags/macro look complete, but ingest queue still has ${running_jobs} running job(s); wait until queue drains."
+  fi
+
+  if (( stalled_polls >= NO_PROGRESS_POLLS )); then
+    running_jobs="$(running_ingest_jobs)"
+    running_jobs="${running_jobs//[[:space:]]/}"
+    if (( running_jobs == 0 )); then
+      warn "No progress for ${stalled_polls} polls and queue is empty, but strict completion not yet met; keep waiting for next poll."
+    else
+      warn "No progress for ${stalled_polls} polls and ${running_jobs} running job(s) remain; keep waiting."
+    fi
   fi
 
   now="$(date +%s)"
