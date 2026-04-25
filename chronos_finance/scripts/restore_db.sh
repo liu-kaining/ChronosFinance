@@ -35,14 +35,20 @@ fi
 log() { printf "\033[1;33m[restore]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;31m[restore]\033[0m %s\n" "$*"; }
 
-if docker-compose ps --status running --services 2>/dev/null | grep -qx api; then
-  warn "API is still running — recommend: docker-compose stop api"
+running_apis="$(docker-compose ps --status running --services 2>/dev/null | rg '^(api-read|api-write)$' || true)"
+if [[ -n "$running_apis" ]]; then
+  warn "API services are still running ($(echo "$running_apis" | tr '\n' ' ')) — recommend: docker-compose stop api-read api-write"
   read -r -p "Continue anyway? [y/N] " ans
   [[ "${ans:-}" == "y" || "${ans:-}" == "Y" ]] || exit 1
 fi
 
 if ! docker-compose ps --status running --services 2>/dev/null | grep -qx db; then
   echo "ERROR: db service is not running." >&2
+  exit 1
+fi
+
+if ! docker-compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "SELECT 1" >/dev/null 2>&1; then
+  echo "ERROR: cannot access database '$POSTGRES_DB' as user '$POSTGRES_USER'." >&2
   exit 1
 fi
 
@@ -69,4 +75,4 @@ case "$FILE" in
     ;;
 esac
 
-log "Done. Start API: docker-compose start api"
+log "Done. Start APIs: docker-compose start api-read api-write"

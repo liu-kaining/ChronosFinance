@@ -74,6 +74,18 @@ if ! docker-compose ps --status running --services 2>/dev/null | grep -qx db; th
     die "Database container not running. Start with: docker-compose up -d db"
 fi
 
+# Validate target database is reachable and exists before restore.
+if ! docker-compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "SELECT 1" >/dev/null 2>&1; then
+    die "Cannot access database '$POSTGRES_DB' as user '$POSTGRES_USER'. Check .env POSTGRES_DB/POSTGRES_USER."
+fi
+
+# Warn if APIs are running (service names in this repo are api-read/api-write).
+running_apis="$(docker-compose ps --status running --services 2>/dev/null | rg '^(api-read|api-write)$' || true)"
+if [[ -n "$running_apis" ]]; then
+    warn "API services are running ($(echo "$running_apis" | tr '\n' ' ')). Recommend stopping them before restore:"
+    warn "  docker-compose stop api-read api-write"
+fi
+
 # Get current database stats for comparison
 log "Current database state:"
 CURRENT_STATS=$(docker-compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "
@@ -115,6 +127,7 @@ RESTORE_OPTS=(
 
 if [[ "$CLEAN_MODE" == "true" ]]; then
     RESTORE_OPTS+=("--clean")  # Drop existing objects before recreating
+    RESTORE_OPTS+=("--if-exists")
 fi
 
 # Use pg_restore for custom format dumps

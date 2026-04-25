@@ -1,71 +1,39 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, RefreshCcw } from "lucide-react";
 
 import { api, endpoints } from "@/lib/api";
-import type { StatsOverview, UniversePage, PricesSeriesResponse } from "@/lib/types";
+import type { MarketSnapshotResponse, StatsOverview } from "@/lib/types";
 import { echartsBase, COLORS, signalColor } from "@/lib/theme";
 import { fmtCap, fmtNum, fmtPctSigned } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
-interface Mover {
-  symbol: string;
-  change: number;
-  close: number;
-  volume: number;
-}
-
 export function MarketPulsePage() {
+  const [rotationSort, setRotationSort] = useState<"move" | "breadth">("move");
   const { data: stats } = useQuery({
     queryKey: ["stats-overview"],
     queryFn: () => api.get<StatsOverview>(endpoints.statsOverview()),
     staleTime: 60_000,
   });
 
-  const { data: universe } = useQuery({
-    queryKey: ["universe-top100"],
-    queryFn: () =>
-      api.get<UniversePage>(endpoints.universe(), {
-        params: { limit: 100, active_only: true },
-      }),
-    staleTime: 60_000,
-  });
-
-  // Fetch prices for top symbols to compute movers
-  const symbols = (universe?.items ?? []).slice(0, 50).map((u) => u.symbol);
-  const { data: movers } = useQuery({
-    queryKey: ["movers", symbols.join(",")],
-    queryFn: async () => {
-      const results: Mover[] = [];
-      for (const sym of symbols.slice(0, 30)) {
-        try {
-          const prices = await api.get<PricesSeriesResponse>(endpoints.prices(sym), {
-            params: { limit: 2, order: "desc" },
-          });
-          if (prices.items?.length >= 2) {
-            const latest = prices.items[0]!;
-            const prev = prices.items[1]!;
-            if (latest.close && prev.close) {
-              results.push({
-                symbol: sym,
-                change: (latest.close - prev.close) / prev.close,
-                close: latest.close,
-                volume: latest.volume ?? 0,
-              });
-            }
-          }
-        } catch {
-          // skip
-        }
-      }
-      return results;
-    },
-    enabled: symbols.length > 0,
+  const { data: market, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["market-snapshot"],
+    queryFn: () => api.get<MarketSnapshotResponse>(endpoints.marketSnapshot(), { params: { limit: 10 } }),
     staleTime: 30_000,
   });
 
-  const gainers = (movers ?? []).filter((m) => m.change > 0).sort((a, b) => b.change - a.change).slice(0, 10);
-  const losers = (movers ?? []).filter((m) => m.change < 0).sort((a, b) => a.change - b.change).slice(0, 10);
+  const gainers = market?.top_gainers ?? [];
+  const losers = market?.top_losers ?? [];
+  const active = market?.most_active ?? [];
+  const rotationRows = useMemo(() => {
+    const rows = [...(market?.sectors ?? [])];
+    rows.sort((a, b) => {
+      if (rotationSort === "breadth") return (b.symbols ?? 0) - (a.symbols ?? 0);
+      return (b.avg_change_pct ?? 0) - (a.avg_change_pct ?? 0);
+    });
+    return rows.slice(0, 10);
+  }, [market?.sectors, rotationSort]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -91,14 +59,14 @@ export function MarketPulsePage() {
       </div>
 
       {/* Movers */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Gainers */}
         <div className="card p-3">
           <div className="mb-3 flex items-center gap-2 text-sm font-medium text-up">
             <TrendingUp size={16} />
             <span>Top Gainers</span>
           </div>
-          <MoversTable items={gainers} type="gainer" />
+          <MoversTable items={gainers} />
         </div>
 
         {/* Losers */}
@@ -107,16 +75,82 @@ export function MarketPulsePage() {
             <TrendingDown size={16} />
             <span>Top Losers</span>
           </div>
-          <MoversTable items={losers} type="loser" />
+          <MoversTable items={losers} />
+        </div>
+
+        <div className="card p-3">
+          <div className="mb-3 text-sm font-medium text-text-primary">Most Active</div>
+          <MoversTable items={active} />
         </div>
       </div>
 
-      {/* Sector distribution (placeholder - would need sector aggregation) */}
+      {/* Sector distribution */}
       <div className="card p-3">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          Sector Distribution
+        <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          <span>Sector Distribution {isLoading ? "" : `(as of ${market?.as_of_date ?? "—"})`}</span>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="flex items-center gap-1 rounded border border-border-soft px-2 py-1 normal-case tracking-normal text-text-secondary hover:bg-bg-2"
+            title="Refresh market snapshot"
+          >
+            <RefreshCcw size={12} className={isFetching ? "animate-spin" : ""} />
+            Refresh
+          </button>
         </div>
-        <SectorTreemap universe={universe?.items ?? []} />
+        <SectorTreemap sectors={market?.sectors ?? []} />
+        <div className="mt-3 overflow-auto">
+          <div className="mb-2 flex items-center justify-end gap-1">
+            <button
+              type="button"
+              onClick={() => setRotationSort("move")}
+              className={cn(
+                "rounded border px-2 py-0.5 text-2xs",
+                rotationSort === "move"
+                  ? "border-accent/40 bg-accent/10 text-accent"
+                  : "border-border-soft text-text-tertiary",
+              )}
+            >
+              Sort by Move
+            </button>
+            <button
+              type="button"
+              onClick={() => setRotationSort("breadth")}
+              className={cn(
+                "rounded border px-2 py-0.5 text-2xs",
+                rotationSort === "breadth"
+                  ? "border-accent/40 bg-accent/10 text-accent"
+                  : "border-border-soft text-text-tertiary",
+              )}
+            >
+              Sort by Breadth
+            </button>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border-soft text-left text-text-tertiary">
+                <th className="px-2 py-1.5">Sector</th>
+                <th className="px-2 py-1.5 text-right">Symbols</th>
+                <th className="px-2 py-1.5 text-right">Avg 1D</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rotationRows.map((s, i) => (
+                <tr key={s.sector} className={i % 2 === 0 ? "bg-bg-2/30" : ""}>
+                  <td className="px-2 py-1.5 text-text-secondary">{s.sector}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-text-secondary">{fmtNum(s.symbols, 0)}</td>
+                  <td
+                    className="px-2 py-1.5 text-right font-mono"
+                    style={{ color: signalColor(s.avg_change_pct ?? null) }}
+                  >
+                    {(s.avg_change_pct ?? 0) >= 0 ? "↑ " : "↓ "}
+                    {fmtPctSigned(s.avg_change_pct, 2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -132,7 +166,7 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-function MoversTable({ items, type }: { items: Mover[]; type: "gainer" | "loser" }) {
+function MoversTable({ items }: { items: MarketSnapshotResponse["top_gainers"] }) {
   if (items.length === 0) {
     return <div className="py-4 text-center text-xs text-text-tertiary">No data</div>;
   }
@@ -162,9 +196,9 @@ function MoversTable({ items, type }: { items: Mover[]; type: "gainer" | "loser"
             </td>
             <td
               className="px-2 py-1.5 text-right font-mono"
-              style={{ color: signalColor(m.change) }}
+              style={{ color: signalColor(m.change_pct ?? null) }}
             >
-              {fmtPctSigned(m.change, 2)}
+              {fmtPctSigned(m.change_pct, 2)}
             </td>
           </tr>
         ))}
@@ -173,16 +207,13 @@ function MoversTable({ items, type }: { items: Mover[]; type: "gainer" | "loser"
   );
 }
 
-function SectorTreemap({ universe }: { universe: Array<{ sector: string | null }> }) {
-  // Aggregate by sector
-  const sectorCounts: Record<string, number> = {};
-  for (const u of universe) {
-    const sector = u.sector || "Unknown";
-    sectorCounts[sector] = (sectorCounts[sector] ?? 0) + 1;
-  }
-
-  const data = Object.entries(sectorCounts)
-    .map(([name, value]) => ({ name, value }))
+function SectorTreemap({
+  sectors,
+}: {
+  sectors: MarketSnapshotResponse["sectors"];
+}) {
+  const data = sectors
+    .map((s) => ({ name: s.sector, value: s.symbols }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 15);
 
@@ -193,7 +224,6 @@ function SectorTreemap({ universe }: { universe: Array<{ sector: string | null }
   const option = {
     ...echartsBase,
     tooltip: {
-      ...echartsBase.tooltip,
       formatter: (params: { name: string; value: number }) =>
         `<b>${params.name}</b><br/>${params.value} symbols`,
     },
@@ -205,7 +235,7 @@ function SectorTreemap({ universe }: { universe: Array<{ sector: string | null }
           value: d.value,
           itemStyle: {
             color: COLORS.accent,
-            borderColor: COLORS.borderSoft,
+            borderColor: COLORS.grid,
             borderWidth: 1,
           },
         })),
@@ -218,19 +248,19 @@ function SectorTreemap({ universe }: { universe: Array<{ sector: string | null }
           show: true,
           formatter: "{b}",
           fontSize: 10,
-          color: COLORS.text0,
+          color: COLORS.text,
         },
         upperLabel: { show: false },
         itemStyle: {
-          borderColor: COLORS.borderSoft,
+          borderColor: COLORS.grid,
           borderWidth: 1,
           gapWidth: 2,
         },
         levels: [
           {
             itemStyle: {
-              color: COLORS.bg2,
-              borderColor: COLORS.borderSoft,
+              color: "#111827",
+              borderColor: COLORS.grid,
               borderWidth: 1,
             },
           },

@@ -1,7 +1,11 @@
 import { Link } from "react-router-dom";
 import { Search, Sparkles, Activity } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 import { cn } from "@/lib/cn";
+import { api, endpoints } from "@/lib/api";
+import type { IngestHealthResponse, SyncProgressResponse } from "@/lib/types";
+import { fmtNum } from "@/lib/format";
 
 interface TopBarProps {
   onOpenPalette: () => void;
@@ -9,6 +13,39 @@ interface TopBarProps {
 }
 
 export function TopBar({ onOpenPalette, onOpenChat }: TopBarProps) {
+  const { data: sync } = useQuery({
+    queryKey: ["topbar-sync-progress"],
+    queryFn: () => api.get<SyncProgressResponse>(endpoints.syncProgress()),
+    staleTime: 30_000,
+  });
+  const { data: ingest } = useQuery({
+    queryKey: ["topbar-ingest-health"],
+    queryFn: () => api.get<IngestHealthResponse>(endpoints.ingestHealth()),
+    staleTime: 20_000,
+  });
+  const active = sync?.active_symbols ?? 0;
+  const coreCoverage =
+    active > 0
+      ? Math.round(
+          ((sync?.active_with_income_synced ?? 0) +
+            (sync?.active_with_balance_synced ?? 0) +
+            (sync?.active_with_cashflow_synced ?? 0) +
+            (sync?.active_with_prices_synced ?? 0) +
+            (sync?.active_with_earnings_synced ?? 0)) /
+            (active * 5) *
+            100,
+        )
+      : 0;
+  const statusClass =
+    coreCoverage >= 95 ? "bg-up" : coreCoverage >= 80 ? "bg-warn" : "bg-down";
+  const queueWarn = (ingest?.failed ?? 0) > 0;
+  const queueBusy = (ingest?.running ?? 0) >= 20;
+  const queueClass = queueWarn
+    ? "border-down/40 bg-down-soft/30 text-down"
+    : queueBusy
+      ? "border-warn/40 bg-warn/10 text-warn"
+      : "border-border-soft bg-bg-2 text-text-secondary";
+
   return (
     <header
       className={cn(
@@ -45,6 +82,23 @@ export function TopBar({ onOpenPalette, onOpenChat }: TopBarProps) {
       </button>
 
       <div className="flex items-center gap-3 text-text-secondary">
+        <div className="hidden items-center gap-2 rounded-md border border-border-soft bg-bg-2 px-2 py-1 text-2xs md:flex">
+          <span className={cn("h-2 w-2 rounded-full", statusClass)} />
+          <span className="text-text-secondary">
+            Coverage {coreCoverage}% · {fmtNum(active, 0)} active
+          </span>
+        </div>
+        <div className={cn("hidden items-center gap-2 rounded-md border px-2 py-1 text-2xs lg:flex", queueClass)}>
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              queueWarn ? "animate-pulse bg-down" : queueBusy ? "animate-pulse bg-warn" : "bg-up",
+            )}
+          />
+          <span>
+            Queue R:{fmtNum(ingest?.running, 0)} F:{fmtNum(ingest?.failed, 0)}
+          </span>
+        </div>
         <button
           type="button"
           onClick={onOpenChat}

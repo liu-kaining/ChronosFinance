@@ -228,3 +228,114 @@ class SymbolDataAtlasResponse(BaseModel):
         0,
         description="Sum of all ``approx_json_text_bytes`` above incl. universe payload",
     )
+
+
+class SectorCoverageRow(BaseModel):
+    sector: str
+    symbols: int
+    market_cap_total: float | None = None
+    avg_change_pct: float | None = None
+
+
+class MoverRow(BaseModel):
+    symbol: str
+    company_name: str | None = None
+    date: date | None = None
+    close: float | None = None
+    prev_close: float | None = None
+    change_pct: float | None = None
+    volume: int | None = None
+
+
+class MarketSnapshotResponse(BaseModel):
+    as_of_date: date | None = None
+    active_symbols: int
+    sectors: list[SectorCoverageRow] = Field(default_factory=list)
+    top_gainers: list[MoverRow] = Field(default_factory=list)
+    top_losers: list[MoverRow] = Field(default_factory=list)
+    most_active: list[MoverRow] = Field(default_factory=list)
+
+
+class LatestPriceSnapshot(BaseModel):
+    date: date | None = None
+    close: float | None = None
+    prev_close: float | None = None
+    change_pct: float | None = None
+    volume: int | None = None
+
+
+class LatestEarningsSnapshot(BaseModel):
+    date: date | None = None
+    eps_estimated: float | None = None
+    eps_actual: float | None = None
+    revenue_estimated: float | None = None
+    revenue_actual: float | None = None
+
+
+class LatestInsiderSnapshot(BaseModel):
+    filing_date: str | None = None
+    transaction_date: date | None = None
+    reporting_name: str | None = None
+    transaction_type: str | None = None
+    securities_transacted: float | None = None
+
+
+class SecFormCount(BaseModel):
+    form_type: str
+    rows: int
+    latest_filing_date: date | None = None
+
+
+class SymbolSnapshotResponse(BaseModel):
+    symbol: str
+    universe: UniverseRow | None = None
+    latest_price: LatestPriceSnapshot = Field(default_factory=LatestPriceSnapshot)
+    latest_earnings: LatestEarningsSnapshot | None = None
+    latest_insider: LatestInsiderSnapshot | None = None
+    insider_rows_90d: int = 0
+    sec_by_form: list[SecFormCount] = Field(default_factory=list)
+    analyst_by_kind: list[NamedCount] = Field(default_factory=list)
+    synced_flags_true: int = 0
+    synced_flags_total: int = 0
+
+
+class StreamEarningsRow(BaseModel):
+    symbol: str
+    company_name: str | None = None
+    date: date
+    eps_estimated: float | None = None
+    eps_actual: float | None = None
+    revenue_estimated: float | None = None
+    revenue_actual: float | None = None
+
+
+class StreamInsiderRow(BaseModel):
+    symbol: str
+    company_name: str | None = None
+    filing_date: str | None = None
+    transaction_date: date | None = None
+    reporting_name: str | None = None
+    transaction_type: str | None = None
+    securities_transacted: float | None = None
+
+
+class StreamSecRow(BaseModel):
+    symbol: str
+    company_name: str | None = None
+    form_type: str
+    filing_date: date | None = None
+    fiscal_year: int | None = None
+    fiscal_period: str | None = None
+
+
+class EventsStreamResponse(BaseModel):
+    earnings: list[StreamEarningsRow] = Field(default_factory=list)
+    insider: list[StreamInsiderRow] = Field(default_factory=list)
+    sec_filings: list[StreamSecRow] = Field(default_factory=list)
+
+
+class IngestHealthResponse(BaseModel):
+    running: int = 0
+    failed: int = 0
+    ok: int = 0
+    skipped: int = 0

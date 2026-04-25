@@ -1,16 +1,18 @@
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import ReactECharts from "echarts-for-react";
 
 import { api, endpoints } from "@/lib/api";
 import type { EarningsSeriesResponse, CorporateActionsResponse, InsiderSeriesResponse } from "@/lib/types";
 import { echartsBase, COLORS, signalColor } from "@/lib/theme";
-import { fmtCap, fmtNum, fmtPct, fmtDay } from "@/lib/format";
+import { fmtCap, fmtNum, fmtDay } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 export function SymbolEvents() {
   const { symbol } = useParams<{ symbol: string }>();
   const sym = (symbol ?? "").toUpperCase();
+  const [epsWindow, setEpsWindow] = useState<8 | 12 | 16>(8);
 
   const { data: earnings, isLoading: earningsLoading } = useQuery({
     queryKey: ["earnings", sym],
@@ -35,16 +37,55 @@ export function SymbolEvents() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="card grid grid-cols-3 gap-3 p-3 text-center">
+        <div>
+          <div className="text-2xs text-text-tertiary">Earnings Rows</div>
+          <div className="kpi-num">{(earnings?.items ?? []).length}</div>
+        </div>
+        <div>
+          <div className="text-2xs text-text-tertiary">Insider Rows</div>
+          <div className="kpi-num">{(insider?.items ?? []).length}</div>
+        </div>
+        <div>
+          <div className="text-2xs text-text-tertiary">Corp Actions</div>
+          <div className="kpi-num">{(actions?.items ?? []).length}</div>
+        </div>
+      </div>
+
       {/* EPS Surprise Chart */}
       <div className="card p-3">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          EPS Surprise (Last 8 Quarters)
+        <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          <span>EPS Surprise (Last {epsWindow} Quarters)</span>
+          <div className="flex items-center gap-1 normal-case tracking-normal">
+            {[8, 12, 16].map((w) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setEpsWindow(w as 8 | 12 | 16)}
+                className={cn(
+                  "rounded border px-2 py-0.5 text-2xs",
+                  epsWindow === w
+                    ? "border-accent/40 bg-accent/10 text-accent"
+                    : "border-border-soft text-text-tertiary",
+                )}
+              >
+                {w}Q
+              </button>
+            ))}
+          </div>
         </div>
         {earningsLoading ? (
           <div className="h-[200px] animate-pulse rounded bg-bg-3" />
         ) : (
-          <EpsSurpriseChart items={earnings?.items ?? []} />
+          <EpsSurpriseChart items={earnings?.items ?? []} window={epsWindow} />
         )}
+      </div>
+
+      <div className="card p-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          EPS Surprise Heatmap (Quarter Matrix)
+        </div>
+        <EpsSurpriseHeatmap items={earnings?.items ?? []} window={epsWindow} />
       </div>
 
       {/* Earnings table */}
@@ -192,10 +233,16 @@ export function SymbolEvents() {
   );
 }
 
-function EpsSurpriseChart({ items }: { items: Array<{ date: string; eps_estimated: number | null; eps_actual: number | null }> }) {
+function EpsSurpriseChart({
+  items,
+  window,
+}: {
+  items: Array<{ date: string; eps_estimated: number | null; eps_actual: number | null }>;
+  window: number;
+}) {
   const data = items
     .filter((e) => e.eps_estimated != null && e.eps_actual != null)
-    .slice(0, 8)
+    .slice(0, window)
     .reverse();
 
   if (data.length === 0) {
@@ -205,33 +252,32 @@ function EpsSurpriseChart({ items }: { items: Array<{ date: string; eps_estimate
   const option = {
     ...echartsBase,
     tooltip: {
-      ...echartsBase.tooltip,
       trigger: "axis",
     },
     legend: {
-      ...echartsBase.legend,
       data: ["Estimated", "Actual"],
       top: 0,
+      textStyle: { color: COLORS.text },
     },
     grid: { left: 48, right: 16, top: 28, bottom: 32 },
     xAxis: {
       type: "category",
       data: data.map((d) => fmtDay(d.date).slice(5)),
-      axisLine: { lineStyle: { color: COLORS.borderSoft } },
-      axisLabel: { color: COLORS.text1, fontSize: 10 },
+      axisLine: { lineStyle: { color: COLORS.grid } },
+      axisLabel: { color: COLORS.text, fontSize: 10 },
     },
     yAxis: {
       type: "value",
       axisLine: { show: false },
-      axisLabel: { color: COLORS.text1, fontSize: 10 },
-      splitLine: { lineStyle: { color: COLORS.borderSoft, type: "dashed" } },
+      axisLabel: { color: COLORS.text, fontSize: 10 },
+      splitLine: { lineStyle: { color: COLORS.grid, type: "dashed" } },
     },
     series: [
       {
         name: "Estimated",
         type: "bar",
         data: data.map((d) => d.eps_estimated),
-        itemStyle: { color: COLORS.text2 },
+        itemStyle: { color: "#6b7280" },
         barWidth: "35%",
       },
       {
@@ -239,7 +285,7 @@ function EpsSurpriseChart({ items }: { items: Array<{ date: string; eps_estimate
         type: "bar",
         data: data.map((d) => d.eps_actual),
         itemStyle: {
-          color: (params: { value: number }) =>
+          color: (params: { value: number; dataIndex: number }) =>
             params.value >= (data[params.dataIndex]?.eps_estimated ?? 0) ? COLORS.up : COLORS.down,
         },
         barWidth: "35%",
@@ -248,4 +294,81 @@ function EpsSurpriseChart({ items }: { items: Array<{ date: string; eps_estimate
   };
 
   return <ReactECharts option={option} style={{ height: 200 }} />;
+}
+
+function EpsSurpriseHeatmap({
+  items,
+  window,
+}: {
+  items: Array<{ date: string; eps_estimated: number | null; eps_actual: number | null }>;
+  window: number;
+}) {
+  const enriched = items
+    .filter((e) => e.eps_estimated != null && e.eps_actual != null && e.eps_estimated !== 0)
+    .slice(0, window)
+    .map((e) => {
+      const dt = new Date(e.date);
+      const year = Number.isNaN(dt.getTime()) ? "N/A" : String(dt.getUTCFullYear());
+      const q = Number.isNaN(dt.getTime()) ? "?" : `Q${Math.floor(dt.getUTCMonth() / 3) + 1}`;
+      const surprise = ((e.eps_actual! - e.eps_estimated!) / Math.abs(e.eps_estimated!)) * 100;
+      return { year, quarter: q, surprise };
+    })
+    .sort((a, b) => a.year.localeCompare(b.year));
+
+  if (enriched.length === 0) {
+    return <div className="py-8 text-center text-xs text-text-tertiary">No EPS surprise data</div>;
+  }
+
+  const years = Array.from(new Set(enriched.map((x) => x.year)));
+  const quarters = ["Q1", "Q2", "Q3", "Q4"];
+  const matrix = enriched
+    .map((x) => [years.indexOf(x.year), quarters.indexOf(x.quarter), Number(x.surprise.toFixed(2))] as [number, number, number])
+    .filter((row) => row[0] >= 0 && row[1] >= 0);
+  const maxAbs = Math.max(...matrix.map((m) => Math.abs(m[2])), 5);
+
+  const option = {
+    ...echartsBase,
+    tooltip: {
+      position: "top",
+      formatter: (p: { data: [number, number, number] }) => {
+        const [x, y, v] = p.data;
+        return `${years[x]} ${quarters[y]}<br/>Surprise: ${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+      },
+    },
+    grid: { left: 52, right: 18, top: 8, bottom: 28 },
+    xAxis: {
+      type: "category",
+      data: years,
+      axisLabel: { color: COLORS.text, fontSize: 10 },
+      axisLine: { lineStyle: { color: COLORS.grid } },
+    },
+    yAxis: {
+      type: "category",
+      data: quarters,
+      axisLabel: { color: COLORS.text, fontSize: 10 },
+      axisLine: { lineStyle: { color: COLORS.grid } },
+    },
+    visualMap: {
+      min: -maxAbs,
+      max: maxAbs,
+      orient: "horizontal",
+      left: "center",
+      bottom: 0,
+      textStyle: { color: COLORS.text },
+      inRange: { color: ["#ef4444", "#111827", "#22c55e"] },
+    },
+    series: [
+      {
+        type: "heatmap",
+        data: matrix,
+        label: {
+          show: true,
+          color: "#e5e7eb",
+          formatter: (p: { data: [number, number, number] }) => `${p.data[2]}%`,
+        },
+        emphasis: { itemStyle: { shadowBlur: 8, shadowColor: "rgba(0,0,0,0.35)" } },
+      },
+    ],
+  };
+  return <ReactECharts option={option} style={{ height: 220 }} />;
 }

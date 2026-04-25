@@ -47,26 +47,26 @@ export function SymbolLayout() {
             <div className="h-4 w-32 animate-pulse rounded bg-bg-3" />
           ) : (
             <div className="text-sm text-text-secondary">
-              {inv?.company_name ?? "—"}
+              {inv?.universe?.company_name ?? "—"}
             </div>
           )}
         </div>
         <div className="flex flex-col text-right">
           <div className="text-xs text-text-tertiary">Sector</div>
           <div className="text-sm text-text-secondary">
-            {inv?.sector ?? "—"}
+            {inv?.universe?.sector ?? "—"}
           </div>
         </div>
         <div className="flex flex-col text-right">
           <div className="text-xs text-text-tertiary">Market Cap</div>
           <div className="font-mono text-sm text-text-secondary">
-            {fmtCap(inv?.market_cap)}
+            {fmtCap(inv?.universe?.market_cap)}
           </div>
         </div>
         <div className="flex flex-col text-right">
           <div className="text-xs text-text-tertiary">Exchange</div>
           <div className="text-sm text-text-secondary">
-            {inv?.exchange ?? "—"}
+            {inv?.universe?.exchange ?? "—"}
           </div>
         </div>
       </header>

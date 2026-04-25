@@ -61,6 +61,11 @@ if ! docker-compose ps --status running --services 2>/dev/null | grep -qx db; th
     die "Database container not running. Start with: docker-compose up -d db"
 fi
 
+# Validate target database is reachable and exists (prevents silent mis-target backups)
+if ! docker-compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "SELECT 1" >/dev/null 2>&1; then
+    die "Cannot access database '$POSTGRES_DB' as user '$POSTGRES_USER'. Check .env POSTGRES_DB/POSTGRES_USER."
+fi
+
 # Build pg_dump options
 PG_OPTS=(
     "-U" "$POSTGRES_USER"
@@ -91,6 +96,12 @@ TEMP_FILE="${BACKUP_FILE}.tmp"
 
 if docker-compose exec -T db pg_dump "${PG_OPTS[@]}" > "$TEMP_FILE"; then
     mv "$TEMP_FILE" "$BACKUP_FILE"
+
+    # Validate dump readability; fail fast if file is corrupted/incomplete.
+    if ! pg_restore -l "$BACKUP_FILE" >/dev/null 2>&1; then
+        rm -f "$BACKUP_FILE"
+        die "Backup created but failed pg_restore list validation. File removed."
+    fi
 
     # Get file size
     SIZE=$(stat -f%z "$BACKUP_FILE" 2>/dev/null || stat -c%s "$BACKUP_FILE" 2>/dev/null)

@@ -1,5 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import {
   DollarSign,
   BarChart3,
@@ -8,32 +9,15 @@ import {
 } from "lucide-react";
 
 import { api, endpoints } from "@/lib/api";
-import type { DailyPrice, PricesSeriesResponse, StaticCategoryInfo, StaticCategoriesResponse, SymbolInventory } from "@/lib/types";
+import type {
+  StaticCategoryInfo,
+  StaticCategoriesResponse,
+  SymbolInventory,
+  SymbolSnapshotResponse,
+} from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { fmtCap, fmtNum, fmtDay, fmtPctSigned } from "@/lib/format";
 import { signalColor } from "@/lib/theme";
-
-/** Fetch latest price (most recent bar) */
-function useLatestPrice(symbol: string) {
-  return useQuery({
-    queryKey: ["price-latest", symbol],
-    queryFn: async () => {
-      const res = await api.get<PricesSeriesResponse>(endpoints.prices(symbol), {
-        params: { limit: 2, order: "desc" },
-      });
-      const items = res.items ?? [];
-      if (items.length === 0) return null;
-      const latest = items[0] as DailyPrice;
-      const prev = items[1] as DailyPrice | undefined;
-      const change = prev?.close && latest.close
-        ? (latest.close - prev.close) / prev.close
-        : null;
-      return { latest, prev, change };
-    },
-    enabled: !!symbol,
-    staleTime: 30_000,
-  });
-}
 
 /** Fetch static categories to understand available financial data */
 function useStaticCategories(symbol: string) {
@@ -56,11 +40,16 @@ export function SymbolOverview() {
     staleTime: 60_000,
   });
 
-  const { data: priceData, isLoading: priceLoading } = useLatestPrice(sym);
+  const { data: snap, isLoading: snapLoading } = useQuery({
+    queryKey: ["symbol-snapshot", sym],
+    queryFn: () => api.get<SymbolSnapshotResponse>(endpoints.symbolSnapshot(sym)),
+    enabled: !!sym,
+    staleTime: 30_000,
+  });
   const { data: catsData } = useStaticCategories(sym);
 
-  const latest = priceData?.latest;
-  const change = priceData?.change;
+  const latest = snap?.latest_price;
+  const change = snap?.latest_price?.change_pct ?? null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -69,56 +58,54 @@ export function SymbolOverview() {
         <KpiCard
           icon={<DollarSign size={16} />}
           label="Last Price"
-          value={latest?.close ? fmtNum(latest.close, 2) : "—"}
+          value={latest?.close != null ? fmtNum(latest.close, 2) : "—"}
           sub={change !== null ? fmtPctSigned(change, 2) : undefined}
           subColor={signalColor(change)}
-          loading={priceLoading}
+          loading={snapLoading}
         />
         <KpiCard
           icon={<BarChart3 size={16} />}
           label="Volume"
-          value={latest?.volume ? fmtCap(latest.volume, 0) : "—"}
+          value={latest?.volume != null ? fmtCap(latest.volume, 0) : "—"}
           sub={latest?.date ? fmtDay(latest.date) : undefined}
-          loading={priceLoading}
+          loading={snapLoading}
         />
         <KpiCard
           icon={<PieChart size={16} />}
           label="Market Cap"
-          value={fmtCap(inv?.market_cap)}
-          sub={inv?.sector ?? undefined}
+          value={fmtCap(snap?.universe?.market_cap)}
+          sub={snap?.universe?.sector ?? undefined}
           loading={invLoading}
         />
         <KpiCard
           icon={<Calendar size={16} />}
           label="Exchange"
-          value={inv?.exchange ?? "—"}
-          sub={inv?.is_actively_trading ? "Trading" : "Inactive"}
+          value={snap?.universe?.exchange ?? "—"}
+          sub={snap?.universe?.is_actively_trading ? "Trading" : "Inactive"}
           loading={invLoading}
         />
       </div>
 
-      {/* Daily range */}
-      {latest && (
+      {snap?.latest_earnings && (
         <div className="card p-4">
-          <div className="mb-2 text-xs text-text-tertiary">Day Range</div>
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-sm text-text-secondary">
-              {fmtNum(latest.low, 2)}
-            </span>
-            <div className="relative h-2 flex-1 rounded-full bg-bg-3">
-              {latest.high && latest.low && latest.close ? (
-                <div
-                  className="absolute top-0 h-2 w-1.5 rounded-full bg-accent"
-                  style={{
-                    left: `${Math.min(100, Math.max(0, ((latest.close - latest.low) / (latest.high - latest.low)) * 100))}%`,
-                    transform: "translateX(-50%)",
-                  }}
-                />
-              ) : null}
+          <div className="mb-2 text-xs text-text-tertiary">Latest Earnings</div>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div>
+              <div className="text-2xs text-text-tertiary">Date</div>
+              <div className="font-mono text-sm text-text-secondary">{fmtDay(snap.latest_earnings.date)}</div>
             </div>
-            <span className="font-mono text-sm text-text-secondary">
-              {fmtNum(latest.high, 2)}
-            </span>
+            <div>
+              <div className="text-2xs text-text-tertiary">EPS Est / Act</div>
+              <div className="font-mono text-sm text-text-secondary">
+                {fmtNum(snap.latest_earnings.eps_estimated, 2)} / {fmtNum(snap.latest_earnings.eps_actual, 2)}
+              </div>
+            </div>
+            <div className="col-span-2">
+              <div className="text-2xs text-text-tertiary">Revenue Est / Act</div>
+              <div className="font-mono text-sm text-text-secondary">
+                {fmtCap(snap.latest_earnings.revenue_estimated)} / {fmtCap(snap.latest_earnings.revenue_actual)}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -140,14 +127,33 @@ export function SymbolOverview() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="card p-4">
+          <div className="mb-2 text-xs text-text-tertiary">Sync Coverage</div>
+          <div className="kpi-num">
+            {snap?.synced_flags_true ?? 0}/{snap?.synced_flags_total ?? 0}
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="mb-2 text-xs text-text-tertiary">Insider Trades (90d)</div>
+          <div className="kpi-num">{fmtNum(snap?.insider_rows_90d, 0)}</div>
+        </div>
+        <div className="card p-4">
+          <div className="mb-2 text-xs text-text-tertiary">SEC Forms</div>
+          <div className="text-sm text-text-secondary">
+            {(snap?.sec_by_form ?? []).slice(0, 3).map((s) => `${s.form_type}:${s.rows}`).join(" · ") || "—"}
+          </div>
+        </div>
+      </div>
+
       {/* Company info */}
-      {inv?.company_name && (
+      {snap?.universe?.company_name && (
         <div className="card p-4">
           <div className="mb-1 text-xs text-text-tertiary">Company</div>
-          <div className="text-sm text-text-primary">{inv.company_name}</div>
-          {inv.industry && (
+          <div className="text-sm text-text-primary">{snap.universe.company_name}</div>
+          {snap.universe.industry && (
             <div className="mt-1 text-xs text-text-secondary">
-              {inv.industry}
+              {snap.universe.industry}
             </div>
           )}
         </div>
@@ -159,7 +165,7 @@ export function SymbolOverview() {
 // ---------- Sub-components ----------
 
 interface KpiCardProps {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: string;
   sub?: string;

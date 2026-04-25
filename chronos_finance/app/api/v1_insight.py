@@ -1,5 +1,7 @@
 """Read-only endpoints to inspect Postgres contents (no FMP calls)."""
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import String, and_, cast, func, select
 
 from fastapi import APIRouter, HTTPException, Query
@@ -10,20 +12,34 @@ from app.models.macro import MacroEconomic
 from app.models.market import CorporateAction, DailyPrice, EarningsCalendar
 from app.models.static_financials import StaticFinancials
 from app.models.stock_universe import StockUniverse
+from app.models.sync_control import SyncRun
 from app.schemas.insight import (
+    EventsStreamResponse,
+    IngestHealthResponse,
+    LatestEarningsSnapshot,
+    LatestInsiderSnapshot,
+    LatestPriceSnapshot,
     AnalystKindAtlas,
     DateRangeStats,
     DateRangeWithJsonFootprint,
+    MarketSnapshotResponse,
     MacroSeriesDataResponse,
     MacroSeriesListResponse,
     MacroSeriesPoint,
     MacroSeriesSummary,
+    MoverRow,
     NamedCount,
+    SecFormCount,
+    StreamEarningsRow,
+    StreamInsiderRow,
+    StreamSecRow,
     SecFormAtlas,
     SecFormInventory,
+    SectorCoverageRow,
     StaticFinancialsBucketAtlas,
     StaticFinancialsSlice,
     StatsOverviewResponse,
+    SymbolSnapshotResponse,
     SymbolDataAtlasResponse,
     SymbolInventoryResponse,
     SyncProgressResponse,
@@ -564,3 +580,395 @@ async def symbol_data_atlas(symbol: str) -> SymbolDataAtlasResponse:
         sec_filings=sec_inv,
         grand_total_approx_json_text_bytes=grand,
     )
+
+
+@router.get(
+    "/data/market/snapshot",
+    response_model=MarketSnapshotResponse,
+    summary="Global market snapshot: sector mix, gainers/losers, most active",
+)
+async def market_snapshot(
+    limit: int = Query(10, ge=3, le=50),
+) -> MarketSnapshotResponse:
+    async with async_session_factory() as session:
+        active_symbols = int(
+            (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(StockUniverse)
+                    .where(StockUniverse.is_actively_trading.is_(True))
+                )
+            )
+            or 0
+        )
+
+        sector_rows = (
+            await session.execute(
+                select(
+                    func.coalesce(StockUniverse.sector, "Unknown"),
+                    func.count(),
+                    func.sum(StockUniverse.market_cap),
+                    func.avg(change_expr),
+                )
+                .select_from(latest)
+                .join(prev, prev.c.symbol == latest.c.symbol)
+                .join(StockUniverse, StockUniverse.symbol == latest.c.symbol)
+                .where(
+                    StockUniverse.is_actively_trading.is_(True),
+                    latest.c.close.is_not(None),
+                    prev.c.close.is_not(None),
+                )
+                .group_by(func.coalesce(StockUniverse.sector, "Unknown"))
+                .order_by(func.sum(StockUniverse.market_cap).desc().nulls_last(), func.count().desc())
+                .limit(20)
+            )
+        ).all()
+        sectors = [
+            SectorCoverageRow(
+                sector=r[0],
+                symbols=int(r[1] or 0),
+                market_cap_total=float(r[2]) if r[2] is not None else None,
+                avg_change_pct=float(r[3]) if r[3] is not None else None,
+            )
+            for r in sector_rows
+        ]
+
+        ranked = (
+            select(
+                DailyPrice.symbol.label("symbol"),
+                DailyPrice.date.label("date"),
+                DailyPrice.close.label("close"),
+                DailyPrice.volume.label("volume"),
+                func.row_number()
+                .over(partition_by=DailyPrice.symbol, order_by=DailyPrice.date.desc())
+                .label("rn"),
+            )
+            .subquery()
+        )
+        latest = select(ranked).where(ranked.c.rn == 1).subquery()
+        prev = select(ranked).where(ranked.c.rn == 2).subquery()
+        change_expr = (latest.c.close - prev.c.close) / func.nullif(prev.c.close, 0)
+
+        base_stmt = (
+            select(
+                latest.c.symbol,
+                StockUniverse.company_name,
+                latest.c.date,
+                latest.c.close,
+                prev.c.close.label("prev_close"),
+                change_expr.label("change_pct"),
+                latest.c.volume,
+            )
+            .join(prev, prev.c.symbol == latest.c.symbol)
+            .join(StockUniverse, StockUniverse.symbol == latest.c.symbol)
+            .where(
+                StockUniverse.is_actively_trading.is_(True),
+                latest.c.close.is_not(None),
+                prev.c.close.is_not(None),
+            )
+        )
+
+        as_of_date = await session.scalar(select(func.max(latest.c.date)))
+        gain_rows = (await session.execute(base_stmt.order_by(change_expr.desc()).limit(limit))).all()
+        lose_rows = (await session.execute(base_stmt.order_by(change_expr.asc()).limit(limit))).all()
+        active_rows = (
+            await session.execute(
+                base_stmt.order_by(latest.c.volume.desc().nulls_last()).limit(limit)
+            )
+        ).all()
+
+    def _to_mover(r) -> MoverRow:
+        return MoverRow(
+            symbol=r[0],
+            company_name=r[1],
+            date=r[2],
+            close=float(r[3]) if r[3] is not None else None,
+            prev_close=float(r[4]) if r[4] is not None else None,
+            change_pct=float(r[5]) if r[5] is not None else None,
+            volume=int(r[6]) if r[6] is not None else None,
+        )
+
+    return MarketSnapshotResponse(
+        as_of_date=as_of_date,
+        active_symbols=active_symbols,
+        sectors=sectors,
+        top_gainers=[_to_mover(r) for r in gain_rows],
+        top_losers=[_to_mover(r) for r in lose_rows],
+        most_active=[_to_mover(r) for r in active_rows],
+    )
+
+
+@router.get(
+    "/data/symbols/{symbol}/snapshot",
+    response_model=SymbolSnapshotResponse,
+    summary="Single-symbol snapshot: latest market/event stats and sync flag coverage",
+)
+async def symbol_snapshot(symbol: str) -> SymbolSnapshotResponse:
+    sym = symbol.strip().upper()
+    if not sym or len(sym) > 20:
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+
+    async with async_session_factory() as session:
+        u = await session.scalar(select(StockUniverse).where(StockUniverse.symbol == sym))
+        universe = UniverseRow.model_validate(u) if u is not None else None
+
+        p_rows = (
+            await session.execute(
+                select(DailyPrice)
+                .where(DailyPrice.symbol == sym)
+                .order_by(DailyPrice.date.desc())
+                .limit(2)
+            )
+        ).scalars().all()
+
+        latest_price = LatestPriceSnapshot()
+        if p_rows:
+            latest_price.date = p_rows[0].date
+            latest_price.close = p_rows[0].close
+            latest_price.volume = p_rows[0].volume
+            if len(p_rows) > 1 and p_rows[1].close not in (None, 0):
+                latest_price.prev_close = p_rows[1].close
+                latest_price.change_pct = (
+                    ((p_rows[0].close or 0) - (p_rows[1].close or 0)) / (p_rows[1].close or 1)
+                    if p_rows[0].close is not None
+                    else None
+                )
+
+        e = await session.scalar(
+            select(EarningsCalendar)
+            .where(EarningsCalendar.symbol == sym)
+            .order_by(EarningsCalendar.date.desc())
+            .limit(1)
+        )
+        latest_earnings = (
+            LatestEarningsSnapshot(
+                date=e.date,
+                eps_estimated=e.eps_estimated,
+                eps_actual=e.eps_actual,
+                revenue_estimated=e.revenue_estimated,
+                revenue_actual=e.revenue_actual,
+            )
+            if e
+            else None
+        )
+
+        ins = await session.scalar(
+            select(InsiderTrade)
+            .where(InsiderTrade.symbol == sym)
+            .order_by(InsiderTrade.filing_date.desc().nulls_last())
+            .limit(1)
+        )
+        latest_insider = (
+            LatestInsiderSnapshot(
+                filing_date=ins.filing_date.isoformat() if ins and ins.filing_date else None,
+                transaction_date=ins.transaction_date if ins else None,
+                reporting_name=ins.reporting_name if ins else None,
+                transaction_type=ins.transaction_type if ins else None,
+                securities_transacted=ins.securities_transacted if ins else None,
+            )
+            if ins
+            else None
+        )
+
+        insider_rows_90d = int(
+            (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(InsiderTrade)
+                    .where(
+                        InsiderTrade.symbol == sym,
+                        InsiderTrade.filing_date >= datetime.now(UTC) - timedelta(days=90),
+                    )
+                )
+            )
+            or 0
+        )
+
+        sec_rows = (
+            await session.execute(
+                select(SECFile.form_type, func.count(), func.max(SECFile.filing_date))
+                .where(SECFile.symbol == sym)
+                .group_by(SECFile.form_type)
+                .order_by(func.count().desc(), SECFile.form_type)
+            )
+        ).all()
+        sec_by_form = [
+            SecFormCount(form_type=r[0], rows=int(r[1] or 0), latest_filing_date=r[2])
+            for r in sec_rows
+        ]
+
+        ae_rows = (
+            await session.execute(
+                select(AnalystEstimate.kind, func.count())
+                .where(AnalystEstimate.symbol == sym)
+                .group_by(AnalystEstimate.kind)
+                .order_by(func.count().desc(), AnalystEstimate.kind)
+            )
+        ).all()
+        analyst_by_kind = [NamedCount(name=r[0], rows=int(r[1] or 0)) for r in ae_rows]
+
+    synced_flags_true = 0
+    synced_flags_total = 0
+    if universe is not None:
+        flag_names = [
+            "income_synced",
+            "balance_synced",
+            "cashflow_synced",
+            "ratios_synced",
+            "metrics_synced",
+            "scores_synced",
+            "ev_synced",
+            "compensation_synced",
+            "segments_synced",
+            "peers_synced",
+            "prices_synced",
+            "actions_synced",
+            "earnings_synced",
+            "insider_synced",
+            "estimates_synced",
+            "filings_synced",
+            "float_synced",
+            "market_cap_synced",
+            "dcf_synced",
+        ]
+        synced_flags_total = len(flag_names)
+        synced_flags_true = sum(1 for n in flag_names if bool(getattr(universe, n, False)))
+
+    return SymbolSnapshotResponse(
+        symbol=sym,
+        universe=universe,
+        latest_price=latest_price,
+        latest_earnings=latest_earnings,
+        latest_insider=latest_insider,
+        insider_rows_90d=insider_rows_90d,
+        sec_by_form=sec_by_form,
+        analyst_by_kind=analyst_by_kind,
+        synced_flags_true=synced_flags_true,
+        synced_flags_total=synced_flags_total,
+    )
+
+
+@router.get(
+    "/data/events/stream",
+    response_model=EventsStreamResponse,
+    summary="Global event stream across active symbols (earnings/insider/SEC filings)",
+)
+async def events_stream(
+    limit: int = Query(30, ge=5, le=200),
+) -> EventsStreamResponse:
+    async with async_session_factory() as session:
+        earnings_rows = (
+            await session.execute(
+                select(
+                    EarningsCalendar.symbol,
+                    StockUniverse.company_name,
+                    EarningsCalendar.date,
+                    EarningsCalendar.eps_estimated,
+                    EarningsCalendar.eps_actual,
+                    EarningsCalendar.revenue_estimated,
+                    EarningsCalendar.revenue_actual,
+                )
+                .join(StockUniverse, StockUniverse.symbol == EarningsCalendar.symbol)
+                .where(StockUniverse.is_actively_trading.is_(True))
+                .order_by(EarningsCalendar.date.desc())
+                .limit(limit)
+            )
+        ).all()
+
+        insider_rows = (
+            await session.execute(
+                select(
+                    InsiderTrade.symbol,
+                    StockUniverse.company_name,
+                    InsiderTrade.filing_date,
+                    InsiderTrade.transaction_date,
+                    InsiderTrade.reporting_name,
+                    InsiderTrade.transaction_type,
+                    InsiderTrade.securities_transacted,
+                )
+                .join(StockUniverse, StockUniverse.symbol == InsiderTrade.symbol)
+                .where(StockUniverse.is_actively_trading.is_(True))
+                .order_by(InsiderTrade.filing_date.desc().nulls_last())
+                .limit(limit)
+            )
+        ).all()
+
+        sec_rows = (
+            await session.execute(
+                select(
+                    SECFile.symbol,
+                    StockUniverse.company_name,
+                    SECFile.form_type,
+                    SECFile.filing_date,
+                    SECFile.fiscal_year,
+                    SECFile.fiscal_period,
+                )
+                .join(StockUniverse, StockUniverse.symbol == SECFile.symbol)
+                .where(StockUniverse.is_actively_trading.is_(True))
+                .order_by(SECFile.filing_date.desc().nulls_last(), SECFile.fiscal_year.desc())
+                .limit(limit)
+            )
+        ).all()
+
+    return EventsStreamResponse(
+        earnings=[
+            StreamEarningsRow(
+                symbol=r[0],
+                company_name=r[1],
+                date=r[2],
+                eps_estimated=r[3],
+                eps_actual=r[4],
+                revenue_estimated=r[5],
+                revenue_actual=r[6],
+            )
+            for r in earnings_rows
+        ],
+        insider=[
+            StreamInsiderRow(
+                symbol=r[0],
+                company_name=r[1],
+                filing_date=r[2].isoformat() if r[2] else None,
+                transaction_date=r[3],
+                reporting_name=r[4],
+                transaction_type=r[5],
+                securities_transacted=r[6],
+            )
+            for r in insider_rows
+        ],
+        sec_filings=[
+            StreamSecRow(
+                symbol=r[0],
+                company_name=r[1],
+                form_type=r[2],
+                filing_date=r[3],
+                fiscal_year=r[4],
+                fiscal_period=r[5],
+            )
+            for r in sec_rows
+        ],
+    )
+
+
+@router.get(
+    "/stats/ingest-health",
+    response_model=IngestHealthResponse,
+    summary="Latest ingest run health counts (running/failed/ok/skipped)",
+)
+async def ingest_health(
+    limit: int = Query(200, ge=20, le=2000),
+) -> IngestHealthResponse:
+    async with async_session_factory() as session:
+        rows = (
+            await session.execute(
+                select(SyncRun.status)
+                .order_by(SyncRun.started_at.desc())
+                .limit(limit)
+            )
+        ).all()
+
+    c = {"running": 0, "failed": 0, "ok": 0, "skipped": 0}
+    for (status,) in rows:
+        key = str(status or "").lower()
+        if key in c:
+            c[key] += 1
+    return IngestHealthResponse(**c)

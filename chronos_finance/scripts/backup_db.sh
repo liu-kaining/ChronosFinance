@@ -43,12 +43,22 @@ if ! docker-compose ps --status running --services 2>/dev/null | grep -qx db; th
   exit 1
 fi
 
+if ! docker-compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "SELECT 1" >/dev/null 2>&1; then
+  log "ERROR: cannot access database '$POSTGRES_DB' as user '$POSTGRES_USER'. Check .env"
+  exit 1
+fi
+
 case "$BACKUP_FORMAT" in
   custom|fc)
     OUT="$BACKUP_DIR/${BASE_NAME}.dump"
     log "pg_dump custom format → $OUT"
     docker-compose exec -T db \
       pg_dump -U "$POSTGRES_USER" -Fc --no-owner --no-acl "$POSTGRES_DB" > "$OUT"
+    if ! pg_restore -l "$OUT" >/dev/null 2>&1; then
+      rm -f "$OUT"
+      log "ERROR: pg_restore validation failed; backup file removed."
+      exit 1
+    fi
     ;;
   plain|sql)
     OUT="$BACKUP_DIR/${BASE_NAME}.sql"

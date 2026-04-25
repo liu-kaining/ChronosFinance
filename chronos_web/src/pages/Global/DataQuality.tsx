@@ -31,6 +31,11 @@ export function DataQualityPage() {
       ]
     : [];
 
+  const gapItems = progressItems
+    .map((p) => ({ ...p, missing: Math.max((p.total ?? 0) - (p.completed ?? 0), 0) }))
+    .filter((p) => p.missing > 0)
+    .sort((a, b) => b.missing - a.missing);
+
   return (
     <div className="flex flex-col gap-4">
       {/* Overview stats */}
@@ -85,6 +90,36 @@ export function DataQualityPage() {
               <ProgressBar key={item.label} {...item} />
             ))}
           </div>
+        )}
+      </div>
+
+      <div className="card p-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          Remaining Gaps (Priority)
+        </div>
+        {gapItems.length === 0 ? (
+          <div className="text-xs text-up">All tracked datasets have full active-symbol coverage.</div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border-soft text-left text-text-tertiary">
+                <th className="px-2 py-1.5">Dataset</th>
+                <th className="px-2 py-1.5 text-right">Covered</th>
+                <th className="px-2 py-1.5 text-right">Missing</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gapItems.map((g, idx) => (
+                <tr key={g.label} className={idx % 2 === 0 ? "bg-bg-2/30" : ""}>
+                  <td className="px-2 py-1.5 text-text-secondary">{g.label}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
+                    {fmtNum(g.completed, 0)} / {fmtNum(g.total, 0)}
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-mono text-down">{fmtNum(g.missing, 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 

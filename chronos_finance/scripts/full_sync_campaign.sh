@@ -28,8 +28,8 @@
 #   FULL_SYNC_MIN_MACRO_SERIES — distinct series_id rows required in macro_economics (default 8)
 #   FULL_SYNC_QUEUE_ONLY — 1 = do not POST/wait on universe (use when active_symbols already set but
 #                          downstream POSTs never ran, e.g. campaign stopped after universe). Implies marker exists.
-#   FULL_SYNC_NO_PROGRESS_POLLS — consecutive no-growth polls to treat campaign as finished when
-#                                 ingest queue has no running tasks (default 4)
+#   FULL_SYNC_NO_PROGRESS_POLLS — consecutive no-growth polls before treating queue-drained stall
+#                                 as terminal failure (default 4)
 #
 set -euo pipefail
 
@@ -413,7 +413,7 @@ while true; do
     running_jobs="$(running_ingest_jobs)"
     running_jobs="${running_jobs//[[:space:]]/}"
     if (( running_jobs == 0 )); then
-      warn "No progress for ${stalled_polls} polls and queue is empty, but strict completion not yet met; keep waiting for next poll."
+      die "No progress for ${stalled_polls} polls, queue is empty, and strict completion is still unmet. Treating campaign as failed terminal state."
     else
       warn "No progress for ${stalled_polls} polls and ${running_jobs} running job(s) remain; keep waiting."
     fi
