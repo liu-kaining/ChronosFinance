@@ -1,6 +1,6 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 
 import { api, endpoints } from "@/lib/api";
@@ -8,11 +8,14 @@ import type { EarningsSeriesResponse, CorporateActionsResponse, InsiderSeriesRes
 import { echartsBase, COLORS, signalColor } from "@/lib/theme";
 import { fmtCap, fmtNum, fmtDay } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { EmptyDataState } from "@/components/ui/EmptyDataState";
+import { PageNarrative } from "@/components/ui/PageNarrative";
 
 export function SymbolEvents() {
   const { symbol } = useParams<{ symbol: string }>();
   const sym = (symbol ?? "").toUpperCase();
   const [epsWindow, setEpsWindow] = useState<8 | 12 | 16>(8);
+  const [selectedEarningsKey, setSelectedEarningsKey] = useState<string>("");
 
   const { data: earnings, isLoading: earningsLoading } = useQuery({
     queryKey: ["earnings", sym],
@@ -35,14 +38,33 @@ export function SymbolEvents() {
     staleTime: 5 * 60_000,
   });
 
+  const earningsRows = useMemo(() => {
+    const base = (earnings?.items ?? []).slice(0, Math.max(12, epsWindow));
+    return base.map((e, idx) => ({
+      ...e,
+      __key: earningsKey(e, idx),
+    }));
+  }, [earnings?.items, epsWindow]);
+  const positiveEpsBeats = earningsRows.filter((e) => {
+    if (typeof e.eps_actual !== "number" || typeof e.eps_estimated !== "number" || e.eps_estimated === 0) {
+      return false;
+    }
+    return e.eps_actual > e.eps_estimated;
+  }).length;
+  const beatRatio = earningsRows.length > 0 ? positiveEpsBeats / earningsRows.length : 0;
+  const eventSignal = beatRatio >= 0.6 ? "业绩偏强" : beatRatio <= 0.4 ? "业绩偏弱" : "业绩分化";
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="card p-3">
-        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-tertiary">事件叙事</div>
-        <div className="text-sm text-text-secondary">
-          先看 EPS 是否持续超预期，再结合公司行为与内部人交易判断“基本面改善是否被资金验证”。
-        </div>
-      </div>
+      <PageNarrative
+        title="事件叙事"
+        description="先看 EPS 是否持续超预期，再结合公司行为与内部人交易，判断基本面改善是否被资金验证。"
+        actions={
+          <span className="chip">
+            当前信号：<span className="font-medium text-text-primary">{eventSignal}</span>（近 {fmtNum(earningsRows.length, 0)} 期，超预期 {fmtNum(positiveEpsBeats, 0)} 期）
+          </span>
+        }
+      />
 
       <div className="card grid grid-cols-3 gap-3 p-3 text-center">
         <div>
@@ -84,7 +106,12 @@ export function SymbolEvents() {
         {earningsLoading ? (
           <div className="h-[200px] animate-pulse rounded bg-bg-3" />
         ) : (
-          <EpsSurpriseChart items={earnings?.items ?? []} window={epsWindow} />
+          <EpsSurpriseChart
+            items={earningsRows}
+            window={epsWindow}
+            selectedKey={selectedEarningsKey}
+            onSelect={setSelectedEarningsKey}
+          />
         )}
       </div>
 
@@ -92,12 +119,27 @@ export function SymbolEvents() {
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
           EPS 超预期热力图（季度矩阵）
         </div>
-        <EpsSurpriseHeatmap items={earnings?.items ?? []} window={epsWindow} />
+        <EpsSurpriseHeatmap
+          items={earningsRows}
+          window={epsWindow}
+          selectedKey={selectedEarningsKey}
+          onSelect={setSelectedEarningsKey}
+        />
+        {earningsRows.length === 0 ? (
+          <div className="mt-2 flex flex-wrap gap-2 text-2xs">
+            <Link to={`/symbol/${sym}/raw`} className="chip">
+              查看原始接口返回
+            </Link>
+            <Link to="/global/data-assets?table=earnings_calendar" className="chip">
+              查看财报表覆盖
+            </Link>
+          </div>
+        ) : null}
       </div>
 
       {/* Earnings table */}
       <div className="card overflow-auto p-2">
-        <table className="w-full text-xs">
+        <table className="table-modern">
           <thead>
             <tr className="border-b border-border-soft text-left text-text-tertiary">
               <th className="px-2 py-1.5">日期</th>
@@ -110,15 +152,20 @@ export function SymbolEvents() {
             </tr>
           </thead>
           <tbody>
-            {(earnings?.items ?? []).slice(0, 12).map((e, i) => {
+            {earningsRows.slice(0, 12).map((e, i) => {
               const epsSurprise =
                 e.eps_estimated && e.eps_actual
                   ? ((e.eps_actual - e.eps_estimated) / Math.abs(e.eps_estimated)) * 100
                   : null;
               return (
                 <tr
-                  key={`${e.date}-${i}`}
-                  className={cn("border-b border-border-soft/50", i % 2 === 0 ? "bg-bg-2/30" : "")}
+                  key={e.__key}
+                  className={cn(
+                    "cursor-pointer border-b border-border-soft/50",
+                    i % 2 === 0 ? "bg-bg-2/30" : "",
+                    selectedEarningsKey === e.__key ? "bg-accent/10" : "",
+                  )}
+                  onClick={() => setSelectedEarningsKey(e.__key)}
                 >
                   <td className="px-2 py-1.5 font-mono text-text-primary">{fmtDay(e.date)}</td>
                   <td className="px-2 py-1.5 text-text-secondary">{e.fiscal_period_end ?? "—"}</td>
@@ -176,7 +223,15 @@ export function SymbolEvents() {
             </div>
           ))}
           {(!actions?.items || actions.items.length === 0) && (
-            <span className="text-xs text-text-tertiary">暂无近期公司行为</span>
+            <EmptyDataState
+              title="暂无近期公司行为"
+              detail="可能是该标的近期没有分红/拆股，也可能是该数据仍在同步中。"
+              actions={
+                <Link to="/global/data-assets?table=corporate_actions" className="chip">
+                  去看公司行为覆盖
+                </Link>
+              }
+            />
           )}
         </div>
       </div>
@@ -186,7 +241,7 @@ export function SymbolEvents() {
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
           内部人交易
         </div>
-        <table className="w-full text-xs">
+        <table className="table-modern">
           <thead>
             <tr className="border-b border-border-soft text-left text-text-tertiary">
               <th className="px-2 py-1.5">申报日期</th>
@@ -233,7 +288,22 @@ export function SymbolEvents() {
           </tbody>
         </table>
         {(!insider?.items || insider.items.length === 0) && (
-          <div className="py-4 text-center text-xs text-text-tertiary">暂无内部人交易</div>
+          <div className="p-3">
+            <EmptyDataState
+              title="暂无内部人交易"
+              detail="可先检查表覆盖情况，再去原始页确认接口返回。"
+              actions={
+                <>
+                  <Link to="/global/data-assets?table=insider_trades" className="chip">
+                    去看内部人覆盖
+                  </Link>
+                  <Link to={`/symbol/${sym}/raw`} className="chip">
+                    去看原始数据
+                  </Link>
+                </>
+              }
+            />
+          </div>
         )}
       </div>
     </div>
@@ -243,9 +313,13 @@ export function SymbolEvents() {
 function EpsSurpriseChart({
   items,
   window,
+  selectedKey,
+  onSelect,
 }: {
-  items: Array<{ date: string; eps_estimated: number | null; eps_actual: number | null }>;
+  items: Array<{ date: string; eps_estimated: number | null; eps_actual: number | null; __key: string }>;
   window: number;
+  selectedKey: string;
+  onSelect: (key: string) => void;
 }) {
   const data = items
     .filter((e) => e.eps_estimated != null && e.eps_actual != null)
@@ -260,6 +334,24 @@ function EpsSurpriseChart({
     ...echartsBase,
     tooltip: {
       trigger: "axis",
+      formatter: (params: Array<{ seriesName: string; value: number; dataIndex: number }>) => {
+        const p = params?.[0];
+        if (!p) return "";
+        const row = data[p.dataIndex];
+        const d = row?.date ? fmtDay(row.date) : "—";
+        const est = row?.eps_estimated ?? null;
+        const act = row?.eps_actual ?? null;
+        const surprise =
+          typeof est === "number" && typeof act === "number" && est !== 0
+            ? ((act - est) / Math.abs(est)) * 100
+            : null;
+        return [
+          `<b>${d}</b>`,
+          `EPS 预期：${fmtNum(est, 2)}`,
+          `EPS 实际：${fmtNum(act, 2)}`,
+          `超预期：${surprise === null ? "—" : `${surprise >= 0 ? "+" : ""}${surprise.toFixed(1)}%`}`,
+        ].join("<br/>");
+      },
     },
     legend: {
       data: ["预期", "实际"],
@@ -283,14 +375,28 @@ function EpsSurpriseChart({
       {
         name: "预期",
         type: "bar",
-        data: data.map((d) => d.eps_estimated),
-        itemStyle: { color: "#6b7280" },
+        data: data.map((d) => ({
+          value: d.eps_estimated,
+          itemStyle: {
+            color: d.__key === selectedKey ? COLORS.accent2 : "#6b7280",
+          },
+        })),
         barWidth: "35%",
       },
       {
         name: "实际",
         type: "bar",
-        data: data.map((d) => d.eps_actual),
+        data: data.map((d, idx) => ({
+          value: d.eps_actual,
+          itemStyle: {
+            color:
+              d.__key === selectedKey
+                ? COLORS.accent
+                : (d.eps_actual ?? 0) >= (data[idx]?.eps_estimated ?? 0)
+                  ? COLORS.up
+                  : COLORS.down,
+          },
+        })),
         itemStyle: {
           color: (params: { value: number; dataIndex: number }) =>
             params.value >= (data[params.dataIndex]?.eps_estimated ?? 0) ? COLORS.up : COLORS.down,
@@ -300,15 +406,31 @@ function EpsSurpriseChart({
     ],
   };
 
-  return <ReactECharts option={option} style={{ height: 200 }} />;
+  return (
+    <ReactECharts
+      option={option}
+      style={{ height: 200 }}
+      onEvents={{
+        click: (params: { dataIndex?: number }) => {
+          if (typeof params.dataIndex !== "number") return;
+          const row = data[params.dataIndex];
+          if (row?.__key) onSelect(row.__key);
+        },
+      }}
+    />
+  );
 }
 
 function EpsSurpriseHeatmap({
   items,
   window,
+  selectedKey,
+  onSelect,
 }: {
-  items: Array<{ date: string; eps_estimated: number | null; eps_actual: number | null }>;
+  items: Array<{ date: string; eps_estimated: number | null; eps_actual: number | null; __key: string }>;
   window: number;
+  selectedKey: string;
+  onSelect: (key: string) => void;
 }) {
   const enriched = items
     .filter((e) => e.eps_estimated != null && e.eps_actual != null && e.eps_estimated !== 0)
@@ -318,7 +440,7 @@ function EpsSurpriseHeatmap({
       const year = Number.isNaN(dt.getTime()) ? "N/A" : String(dt.getUTCFullYear());
       const q = Number.isNaN(dt.getTime()) ? "?" : `Q${Math.floor(dt.getUTCMonth() / 3) + 1}`;
       const surprise = ((e.eps_actual! - e.eps_estimated!) / Math.abs(e.eps_estimated!)) * 100;
-      return { year, quarter: q, surprise };
+      return { year, quarter: q, surprise, key: e.__key };
     })
     .sort((a, b) => a.year.localeCompare(b.year));
 
@@ -329,9 +451,19 @@ function EpsSurpriseHeatmap({
   const years = Array.from(new Set(enriched.map((x) => x.year)));
   const quarters = ["Q1", "Q2", "Q3", "Q4"];
   const matrix = enriched
-    .map((x) => [years.indexOf(x.year), quarters.indexOf(x.quarter), Number(x.surprise.toFixed(2))] as [number, number, number])
+    .map((x) => {
+      const xIdx = years.indexOf(x.year);
+      const yIdx = quarters.indexOf(x.quarter);
+      return {
+        value: [xIdx, yIdx, Number(x.surprise.toFixed(2))] as [number, number, number],
+        __key: x.key,
+      };
+    })
+    .filter((row) => row.value[0] >= 0 && row.value[1] >= 0);
+  const matrixValues = matrix
+    .map((m) => m.value)
     .filter((row) => row[0] >= 0 && row[1] >= 0);
-  const maxAbs = Math.max(...matrix.map((m) => Math.abs(m[2])), 5);
+  const maxAbs = Math.max(...matrixValues.map((m) => Math.abs(m[2])), 5);
 
   const option = {
     ...echartsBase,
@@ -362,12 +494,16 @@ function EpsSurpriseHeatmap({
       left: "center",
       bottom: 0,
       textStyle: { color: COLORS.text },
-      inRange: { color: ["#ef4444", "#111827", "#22c55e"] },
+      inRange: { color: [COLORS.down, COLORS.borderSoft, COLORS.up] },
     },
     series: [
       {
         type: "heatmap",
-        data: matrix,
+        data: matrix.map((m) => ({
+          value: m.value,
+          itemStyle: m.__key === selectedKey ? { borderColor: COLORS.accent, borderWidth: 2 } : undefined,
+          __key: m.__key,
+        })),
         label: {
           show: true,
           color: "#e5e7eb",
@@ -377,5 +513,23 @@ function EpsSurpriseHeatmap({
       },
     ],
   };
-  return <ReactECharts option={option} style={{ height: 220 }} />;
+  return (
+    <ReactECharts
+      option={option}
+      style={{ height: 220 }}
+      onEvents={{
+        click: (params: { data?: { __key?: string } }) => {
+          const key = params?.data?.__key;
+          if (key) onSelect(key);
+        },
+      }}
+    />
+  );
+}
+
+function earningsKey(
+  e: { date?: string | null; fiscal_period_end?: string | null },
+  idx: number,
+): string {
+  return `${e.date ?? "NA"}-${e.fiscal_period_end ?? "NA"}-${idx}`;
 }

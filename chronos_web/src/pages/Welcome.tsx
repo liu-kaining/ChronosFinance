@@ -20,6 +20,8 @@ import type {
 } from "@/lib/types";
 import { fmtCap, fmtNum, fmtPct, fmtPctSigned } from "@/lib/format";
 import { zh } from "@/lib/i18n-zh";
+import { EmptyDataState } from "@/components/ui/EmptyDataState";
+import { PageNarrative } from "@/components/ui/PageNarrative";
 
 const TILES = [
   {
@@ -129,6 +131,7 @@ export function WelcomePage() {
       return { ...x, missing, ratio };
     })
     .sort((a, b) => b.missing - a.missing);
+  const topSector = market?.sectors?.[0]?.sector ?? "—";
 
   return (
     <div className="mx-auto max-w-5xl py-10">
@@ -182,6 +185,7 @@ export function WelcomePage() {
           label="活跃标的"
           value={fmtNum(stats?.universe.active, 0)}
           sub={`总计 ${fmtNum(stats?.universe.total, 0)}`}
+          to="/global/quality"
         />
         <DataKpi
           icon={<Activity size={14} />}
@@ -193,35 +197,49 @@ export function WelcomePage() {
             0,
           )}
           sub="行情 + 财务 + 财报"
+          to="/global/data-assets"
         />
         <DataKpi
           icon={<ShieldCheck size={14} />}
           label="核心覆盖率"
           value={fmtPctSigned(coreDone, 1)}
           sub={`公告覆盖 ${fmtNum(sync?.active_with_filings_synced, 0)}/${fmtNum(active, 0)}`}
+          to="/global/quality"
         />
         <DataKpi
           icon={<TrendingUp size={14} />}
           label="最强标的"
           value={market?.top_gainers?.[0]?.symbol ?? "—"}
           sub={fmtPctSigned(market?.top_gainers?.[0]?.change_pct, 2)}
+          to={market?.top_gainers?.[0]?.symbol ? `/symbol/${market.top_gainers[0].symbol}/overview` : undefined}
         />
       </div>
 
+      <PageNarrative
+        title="市场简报"
+        description="把全局强弱转成动作：先确认强势方向，再检查同步新鲜度，最后决定是否进入个股证据链。"
+      />
+
       <div className="card mb-6 p-4">
-        <div className="mb-1 text-2xs uppercase tracking-wider text-text-tertiary">市场简报</div>
-        <div className="text-sm text-text-secondary">
-          {market?.top_gainers?.[0]?.symbol ? (
-            <>
-              当前最强的是 <span className="ticker text-text-primary">{market.top_gainers[0].symbol}</span>{" "}
-              （{fmtPctSigned(market.top_gainers[0].change_pct, 2)}），主要走弱在{" "}
-              <span className="ticker text-text-primary">{market.top_losers?.[0]?.symbol ?? "—"}</span>.{" "}
-              板块广度第一为 <span className="text-text-primary">{market.sectors?.[0]?.sector ?? "—"}</span>。
-            </>
-          ) : (
-            "正在加载市场快照。"
-          )}
-        </div>
+        {market?.top_gainers?.[0]?.symbol ? (
+          <div className="text-sm text-text-secondary">
+            当前最强的是 <span className="ticker text-text-primary">{market.top_gainers[0].symbol}</span>{" "}
+            （{fmtPctSigned(market.top_gainers[0].change_pct, 2)}），主要走弱在{" "}
+            <span className="ticker text-text-primary">{market.top_losers?.[0]?.symbol ?? "—"}</span>.{" "}
+            板块广度第一为 <span className="text-text-primary">{topSector}</span>。
+          </div>
+        ) : (
+          <EmptyDataState
+            title="市场快照暂不可用"
+            detail="你仍可先看同步覆盖和数据资产，确认数据链路是否完整。"
+            actions={
+              <>
+                <Link to="/global/quality" className="chip">去同步覆盖</Link>
+                <Link to="/global/data-assets" className="chip">去数据资产</Link>
+              </>
+            }
+          />
+        )}
         <div className="mt-2 text-2xs text-text-tertiary">
           数据状态：{" "}
           <span className={`rounded border px-1.5 py-0.5 font-medium uppercase ${freshnessClass}`}>
@@ -242,8 +260,20 @@ export function WelcomePage() {
             </span>
           </div>
         </div>
+        {active === 0 ? (
+          <EmptyDataState
+            title="当前无活跃标的，无法计算收口缺口"
+            detail="先检查股票池活跃状态，再执行缺口补跑。"
+            actions={
+              <>
+                <Link to="/global/quality" className="chip">检查覆盖状态</Link>
+                <Link to="/global/data-assets?table=stock_universe" className="chip">检查股票池</Link>
+              </>
+            }
+          />
+        ) : (
         <div className="overflow-auto">
-          <table className="w-full text-xs">
+          <table className="table-modern">
             <thead>
               <tr className="border-b border-border-soft text-left text-text-tertiary">
                 <th className="px-2 py-1.5">数据集</th>
@@ -284,7 +314,7 @@ export function WelcomePage() {
                           if (!cmd) return;
                           void navigator.clipboard.writeText(cmd);
                         }}
-                        title="Copy retry command"
+                        title="复制补跑命令"
                       >
                         复制补跑命令
                       </button>
@@ -297,6 +327,7 @@ export function WelcomePage() {
             </tbody>
           </table>
         </div>
+        )}
         <div className="mt-2 text-2xs text-text-tertiary">
           点击按钮会复制命令到剪贴板，粘贴到终端执行即可补跑。
         </div>
@@ -330,13 +361,15 @@ function DataKpi({
   label,
   value,
   sub,
+  to,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
   sub?: string;
+  to?: string;
 }) {
-  return (
+  const body = (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5 text-2xs text-text-tertiary">
         {icon}
@@ -345,6 +378,13 @@ function DataKpi({
       <div className="kpi-num">{value}</div>
       {sub ? <div className="text-2xs text-text-secondary">{sub}</div> : null}
     </div>
+  );
+
+  if (!to) return body;
+  return (
+    <Link to={to} className="rounded-md px-1 py-0.5 transition-colors hover:bg-bg-2" title="点击下钻">
+      {body}
+    </Link>
   );
 }
 

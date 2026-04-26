@@ -6,18 +6,35 @@ import { api, endpoints } from "@/lib/api";
 import type { TableInventoryResponse } from "@/lib/types";
 import { fmtNum } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { EmptyDataState } from "@/components/ui/EmptyDataState";
+import { PageNarrative } from "@/components/ui/PageNarrative";
+
+const TABLE_DRILLDOWN_ROUTE: Record<string, string> = {
+  daily_prices: "/global/market-pulse",
+  static_financials: "/symbol/TMC/financials",
+  earnings_calendar: "/global/events",
+  insider_trades: "/global/events",
+  analyst_estimates: "/symbol/TMC/analyst",
+  sec_files: "/symbol/TMC/sec",
+  corporate_actions: "/global/events",
+  macro_economics: "/global/macro",
+  stock_universe: "/",
+};
 
 export function DataAssetsPage() {
+  const [searchParams] = useSearchParams();
   const { data, isLoading } = useQuery({
     queryKey: ["table-inventory"],
     queryFn: () => api.get<TableInventoryResponse>(endpoints.tableInventory()),
     staleTime: 120_000,
   });
 
-  const [group, setGroup] = useState<string>("");
-  const [emptyOnly, setEmptyOnly] = useState(false);
-  const [unexposedOnly, setUnexposedOnly] = useState(false);
+  const presetTable = searchParams.get("table") ?? "";
+  const [group, setGroup] = useState<string>(searchParams.get("group") ?? "");
+  const [emptyOnly, setEmptyOnly] = useState(searchParams.get("empty") === "1");
+  const [unexposedOnly, setUnexposedOnly] = useState(searchParams.get("unexposed") === "1");
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
 
   const groups = useMemo(() => {
     const s = new Set<string>();
@@ -27,19 +44,30 @@ export function DataAssetsPage() {
 
   const rows = useMemo(() => {
     let r = data?.items ?? [];
+    if (presetTable) r = r.filter((x) => x.table === presetTable);
     if (group) r = r.filter((x) => x.group_zh === group);
     if (emptyOnly) r = r.filter((x) => x.est_rows === 0);
     if (unexposedOnly) r = r.filter((x) => !x.exposed_in_ui);
-    return r;
-  }, [data?.items, group, emptyOnly, unexposedOnly]);
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      r = r.filter((x) => x.table.toLowerCase().includes(q) || x.name_zh.toLowerCase().includes(q));
+    }
+    return r.sort((a, b) => b.est_rows - a.est_rows);
+  }, [data?.items, presetTable, group, emptyOnly, unexposedOnly, query]);
 
   return (
     <div className="flex flex-col gap-4">
+      <PageNarrative
+        title="产品叙事 · 使用动线"
+        description="先看全局环境，再定标的，按价格-财务-事件-预期公告下钻证据，最后回到本页核对表覆盖与空表原因。"
+        actions={
+          <>
+            <span className="chip"><BookOpen size={12} /> 全库表资产台账</span>
+            <Link to="/global/quality" className="chip">去同步覆盖</Link>
+          </>
+        }
+      />
       <div className="card p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-medium text-text-primary">
-          <BookOpen size={16} className="text-accent" />
-          <span>产品叙事 · 使用动线</span>
-        </div>
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-text-secondary">
           <li>
             <b className="text-text-primary">看全局</b>：在「总览 / 市场脉动 / 宏观」了解指数、板块与数据新鲜度，回答「
@@ -85,6 +113,12 @@ export function DataAssetsPage() {
         </div>
 
         <div className="mb-3 flex flex-wrap items-center gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索表名/含义"
+            className="w-full rounded border border-border-soft bg-bg-2 px-2 py-1 text-xs sm:w-48"
+          />
           <div className="flex items-center gap-1">
             <Filter size={12} />
             <span className="text-2xs text-text-tertiary">分类</span>
@@ -113,13 +147,57 @@ export function DataAssetsPage() {
             />
             未做界面
           </label>
+          {presetTable ? (
+            <span className="rounded border border-accent/30 bg-accent/10 px-2 py-0.5 text-2xs text-accent">
+              仅查看：{presetTable}
+            </span>
+          ) : null}
+          {(group || emptyOnly || unexposedOnly || query) ? (
+            <button
+              type="button"
+              className="rounded border border-border-soft px-2 py-0.5 text-2xs text-text-secondary hover:bg-bg-3"
+              onClick={() => {
+                setGroup("");
+                setEmptyOnly(false);
+                setUnexposedOnly(false);
+                setQuery("");
+              }}
+            >
+              清空筛选
+            </button>
+          ) : null}
         </div>
 
         {isLoading ? (
           <div className="h-[240px] animate-pulse rounded bg-bg-3" />
         ) : (
+          rows.length === 0 ? (
+            <EmptyDataState
+              title="当前筛选条件下没有匹配表"
+              detail="可放宽筛选条件，或前往同步覆盖页面看缺口优先级。"
+              actions={
+                <>
+                  <button
+                    type="button"
+                    className="chip"
+                    onClick={() => {
+                      setGroup("");
+                      setEmptyOnly(false);
+                      setUnexposedOnly(false);
+                      setQuery("");
+                    }}
+                  >
+                    重置筛选
+                  </button>
+                  <Link to="/global/quality" className="chip">
+                    去看同步覆盖
+                  </Link>
+                </>
+              }
+            />
+          ) : (
           <div className="overflow-auto">
-            <table className="w-full min-w-[720px] text-xs">
+            <table className="table-modern min-w-[720px]">
               <thead>
                 <tr className="border-b border-border-soft text-left text-text-tertiary">
                   <th className="px-2 py-1.5">分类</th>
@@ -128,6 +206,7 @@ export function DataAssetsPage() {
                   <th className="px-2 py-1.5 text-right">约行数</th>
                   <th className="px-2 py-1.5">界面</th>
                   <th className="px-2 py-1.5">备注</th>
+                  <th className="px-2 py-1.5 text-right">下钻</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,11 +228,24 @@ export function DataAssetsPage() {
                     <td className="max-w-[280px] px-2 py-1.5 text-text-tertiary">
                       {it.note ?? "—"}
                     </td>
+                    <td className="px-2 py-1.5 text-right">
+                      {TABLE_DRILLDOWN_ROUTE[it.table] ? (
+                        <Link
+                          to={TABLE_DRILLDOWN_ROUTE[it.table]}
+                          className="rounded border border-border-soft px-2 py-0.5 text-2xs text-text-secondary hover:bg-bg-3"
+                        >
+                          去页面
+                        </Link>
+                      ) : (
+                        <span className="text-2xs text-text-tertiary">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          )
         )}
       </div>
     </div>

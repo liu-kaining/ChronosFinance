@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import {
@@ -18,6 +18,8 @@ import type {
 import { cn } from "@/lib/cn";
 import { fmtCap, fmtNum, fmtDay, fmtPctSigned } from "@/lib/format";
 import { signalColor } from "@/lib/theme";
+import { EmptyDataState } from "@/components/ui/EmptyDataState";
+import { PageNarrative } from "@/components/ui/PageNarrative";
 
 /** Fetch static categories to understand available financial data */
 function useStaticCategories(symbol: string) {
@@ -53,12 +55,18 @@ export function SymbolOverview() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="card p-4">
-        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-tertiary">投资叙事</div>
-        <div className="text-sm text-text-secondary">
-          先看价格与成交确认市场定价，再看最近业绩与数据覆盖，最后核验公告与内部人行为是否支持这个定价。
-        </div>
-      </div>
+      <PageNarrative
+        title="投资叙事"
+        description="先看价格与成交确认市场定价，再看最近业绩与数据覆盖，最后核验公告与内部人行为是否支持该定价。"
+        actions={
+          <>
+            <Link to={`/symbol/${sym}/chart`} className="chip">① 价格结构</Link>
+            <Link to={`/symbol/${sym}/financials`} className="chip">② 财务质量</Link>
+            <Link to={`/symbol/${sym}/events`} className="chip">③ 事件验证</Link>
+            <Link to={`/symbol/${sym}/sec`} className="chip">④ 公告核验</Link>
+          </>
+        }
+      />
 
       {/* Price card */}
       <div className="card grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
@@ -124,11 +132,22 @@ export function SymbolOverview() {
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {(catsData?.categories ?? []).map((c) => (
-            <DataCategoryCard key={`${c.data_category}-${c.period}`} cat={c} />
+            <div key={`${c.data_category}-${c.period}`}>
+              <DataCategoryCard cat={c} />
+            </div>
           ))}
           {(!catsData?.categories || catsData.categories.length === 0) && (
-            <div className="col-span-full py-4 text-center text-sm text-text-tertiary">
-              未发现财务数据分类。
+            <div className="col-span-full">
+              <EmptyDataState
+                title="未发现财务数据分类"
+                detail="该标的财务数据暂不可用，可先看价格与事件页，再回到财务页复查。"
+                actions={
+                  <>
+                    <Link to={`/symbol/${sym}/events`} className="chip">去看事件页</Link>
+                    <Link to={`/symbol/${sym}/raw`} className="chip">查看原始 JSON</Link>
+                  </>
+                }
+              />
             </div>
           )}
         </div>

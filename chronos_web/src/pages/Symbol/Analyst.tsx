@@ -1,5 +1,6 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 
 import { api, endpoints } from "@/lib/api";
@@ -7,6 +8,8 @@ import type { AnalystEstimatesResponse } from "@/lib/types";
 import { echartsBase, COLORS } from "@/lib/theme";
 import { fmtCap, fmtNum, fmtDay } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { EmptyDataState } from "@/components/ui/EmptyDataState";
+import { PageNarrative } from "@/components/ui/PageNarrative";
 
 export function SymbolAnalyst() {
   const { symbol } = useParams<{ symbol: string }>();
@@ -20,26 +23,40 @@ export function SymbolAnalyst() {
   });
 
   const items = data?.items ?? [];
+  const [selectedConsensusKey, setSelectedConsensusKey] = useState<string>("");
 
   // Group by kind
   const priceTargets = items.filter((i) => i.kind === "price_target" || i.kind?.includes("price_target"));
   const consensusAnnual = items.filter((i) => i.kind === "consensus_annual");
   const consensusQuarter = items.filter((i) => i.kind === "consensus_quarter");
+  const consensusRows = useMemo(
+    () =>
+      [...consensusAnnual.slice(0, 5), ...consensusQuarter.slice(0, 5)].map((c, idx) => ({
+        ...c,
+        __key: `${c.kind ?? "NA"}-${c.ref_date ?? "NA"}-${idx}`,
+      })),
+    [consensusAnnual, consensusQuarter],
+  );
 
   // Extract latest price target
   const latestTarget = priceTargets[0]?.raw_payload as Record<string, unknown> | undefined;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="card p-3">
-        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-tertiary">预期叙事</div>
-        <div className="text-sm text-text-secondary">
-          先看目标价区间与中位数，再看盈利一致预期，判断“当前价格与市场共识”之间的偏离程度。
-        </div>
-      </div>
+      <PageNarrative
+        title="预期叙事"
+        description="先看目标价区间与中位数，再看盈利一致预期，判断当前价格与市场共识之间的偏离程度。"
+        actions={
+          <>
+            <Link to={`/symbol/${sym}/overview`} className="chip">回看当前定价</Link>
+            <Link to={`/symbol/${sym}/events`} className="chip">交叉验证业绩兑现</Link>
+            <Link to={`/symbol/${sym}/raw`} className="chip">核对原始分析师数据</Link>
+          </>
+        }
+      />
       {isLoading ? (
         <div className="card flex h-[300px] items-center justify-center">
-          <div className="text-sm text-text-tertiary">Loading…</div>
+          <div className="text-sm text-text-tertiary">加载分析师数据中…</div>
         </div>
       ) : (
         <>
@@ -81,7 +98,7 @@ export function SymbolAnalyst() {
             <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
               一致预期
             </div>
-            <table className="w-full text-xs">
+            <table className="table-modern">
               <thead>
                 <tr className="border-b border-border-soft text-left text-text-tertiary">
                   <th className="px-2 py-1.5">类型</th>
@@ -92,12 +109,17 @@ export function SymbolAnalyst() {
                 </tr>
               </thead>
               <tbody>
-                {[...consensusAnnual.slice(0, 5), ...consensusQuarter.slice(0, 5)].map((c, i) => {
+                {consensusRows.map((c, i) => {
                   const payload = c.raw_payload as Record<string, unknown>;
                   return (
                     <tr
-                      key={`${c.kind}-${c.ref_date}-${i}`}
-                      className={cn("border-b border-border-soft/50", i % 2 === 0 ? "bg-bg-2/30" : "")}
+                      key={c.__key}
+                      className={cn(
+                        "cursor-pointer border-b border-border-soft/50",
+                        i % 2 === 0 ? "bg-bg-2/30" : "",
+                        selectedConsensusKey === c.__key ? "bg-accent/10" : "",
+                      )}
+                      onClick={() => setSelectedConsensusKey(c.__key)}
                     >
                       <td className="px-2 py-1.5">
                         <span className="chip">{c.kind}</span>
@@ -119,9 +141,18 @@ export function SymbolAnalyst() {
                 })}
               </tbody>
             </table>
-            {consensusAnnual.length === 0 && consensusQuarter.length === 0 && (
-              <div className="py-4 text-center text-xs text-text-tertiary">
-                暂无一致预期数据
+            {consensusRows.length === 0 && (
+              <div className="p-3">
+                <EmptyDataState
+                  title="暂无一致预期数据"
+                  detail="可先看目标价分布或回到事件页验证业绩兑现情况。"
+                  actions={
+                    <>
+                      <Link to={`/symbol/${sym}/events`} className="chip">去看业绩与事件</Link>
+                      <Link to={`/symbol/${sym}/raw`} className="chip">查看原始 JSON</Link>
+                    </>
+                  }
+                />
               </div>
             )}
           </div>
@@ -132,7 +163,7 @@ export function SymbolAnalyst() {
               <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
                 全部分析师数据（{items.length} 行）
               </div>
-              <table className="w-full text-xs">
+              <table className="table-modern">
                 <thead>
                   <tr className="border-b border-border-soft text-left text-text-tertiary">
                     <th className="px-2 py-1.5">类型</th>
@@ -161,8 +192,17 @@ export function SymbolAnalyst() {
           )}
 
           {items.length === 0 && (
-            <div className="card flex h-[200px] items-center justify-center">
-              <div className="text-sm text-text-tertiary">暂无分析师数据。</div>
+            <div className="card p-4">
+              <EmptyDataState
+                title="暂无分析师数据"
+                detail="可能是供应商覆盖不足，或该标的暂未同步该数据集。"
+                actions={
+                  <>
+                    <Link to="/global/data-assets?table=analyst_estimates" className="chip">查看分析师覆盖</Link>
+                    <Link to={`/symbol/${sym}/raw`} className="chip">查看原始 JSON</Link>
+                  </>
+                }
+              />
             </div>
           )}
         </>
@@ -219,8 +259,8 @@ function PriceTargetChart({ data }: { data: Array<{ raw_payload: Record<string, 
   const option = {
     ...echartsBase,
     tooltip: {
-      ...echartsBase.tooltip,
       trigger: "item",
+      formatter: (params: { name: string; value: number }) => `${params.name}：${fmtNum(params.value, 2)}`,
     },
     grid: { left: 48, right: 16, top: 16, bottom: 32 },
     xAxis: {

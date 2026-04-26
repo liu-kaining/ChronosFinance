@@ -51,7 +51,7 @@ export function TopBar({ onOpenPalette, onOpenChat, theme, onToggleTheme }: TopB
   return (
     <header
       className={cn(
-        "flex h-14 items-center justify-between border-b border-border-soft bg-panel px-4",
+        "flex h-14 items-center justify-between border-b border-border-soft/80 bg-panel/90 px-4 backdrop-blur-sm",
       )}
     >
       <div className="flex items-center gap-3">
@@ -72,7 +72,7 @@ export function TopBar({ onOpenPalette, onOpenChat, theme, onToggleTheme }: TopB
         type="button"
         onClick={onOpenPalette}
         className={cn(
-          "group flex w-[420px] max-w-[40vw] items-center gap-2 rounded-md border border-border-soft bg-bg-2 px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-border hover:bg-bg-3",
+          "group flex w-[460px] max-w-[44vw] items-center gap-2 rounded-lg border border-border-soft bg-bg-2/80 px-3 py-1.5 text-sm text-text-secondary transition-all hover:border-accent/30 hover:bg-bg-3",
         )}
       >
         <Search size={14} />
@@ -84,13 +84,13 @@ export function TopBar({ onOpenPalette, onOpenChat, theme, onToggleTheme }: TopB
       </button>
 
       <div className="flex items-center gap-3 text-text-secondary">
-        <div className="hidden items-center gap-2 rounded-md border border-border-soft bg-bg-2 px-2 py-1 text-2xs md:flex">
+        <div className="hidden items-center gap-2 rounded-lg border border-border-soft bg-bg-2/80 px-2 py-1 text-2xs md:flex">
           <span className={cn("h-2 w-2 rounded-full", statusClass)} />
           <span className="text-text-secondary">
             覆盖率 {coreCoverage}% · 活跃 {fmtNum(active, 0)}
           </span>
         </div>
-        <div className={cn("hidden items-center gap-2 rounded-md border px-2 py-1 text-2xs lg:flex", queueClass)}>
+        <div className={cn("hidden items-center gap-2 rounded-lg border px-2 py-1 text-2xs lg:flex", queueClass)}>
           <span
             className={cn(
               "h-1.5 w-1.5 rounded-full",
@@ -104,7 +104,7 @@ export function TopBar({ onOpenPalette, onOpenChat, theme, onToggleTheme }: TopB
         <button
           type="button"
           onClick={onOpenChat}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs hover:bg-bg-3"
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs hover:bg-bg-3"
           title="打开 AI 助手 (⌘J)"
         >
           <Sparkles size={14} />
@@ -114,7 +114,7 @@ export function TopBar({ onOpenPalette, onOpenChat, theme, onToggleTheme }: TopB
         <button
           type="button"
           onClick={onToggleTheme}
-          className="flex items-center gap-1 rounded-md border border-border-soft bg-bg-2 px-2 py-1 text-xs hover:bg-bg-3"
+          className="flex items-center gap-1 rounded-lg border border-border-soft bg-bg-2/80 px-2 py-1 text-xs hover:bg-bg-3"
           title="切换明暗主题"
         >
           {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}

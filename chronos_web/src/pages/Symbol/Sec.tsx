@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
@@ -7,6 +7,8 @@ import { api, endpoints } from "@/lib/api";
 import type { SecFilingsListResponse } from "@/lib/types";
 import { fmtDay } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { EmptyDataState } from "@/components/ui/EmptyDataState";
+import { PageNarrative } from "@/components/ui/PageNarrative";
 
 export function SymbolSec() {
   const { symbol } = useParams<{ symbol: string }>();
@@ -21,6 +23,7 @@ export function SymbolSec() {
 
   const items = data?.items ?? [];
   const [formFilter, setFormFilter] = useState<string>("ALL");
+  const [yearFilter, setYearFilter] = useState<number | "ALL">("ALL");
 
   // Group by fiscal year
   const byYear = items.reduce<Record<number, typeof items>>((acc, item) => {
@@ -40,10 +43,13 @@ export function SymbolSec() {
     return acc;
   }, {});
   const donutData = Object.entries(formCounts).map(([name, value]) => ({ name, value }));
-  const filteredItems = useMemo(
-    () => (formFilter === "ALL" ? items : items.filter((i) => i.form_type === formFilter)),
-    [formFilter, items],
-  );
+  const filteredItems = useMemo(() => {
+    return items.filter((i) => {
+      const byForm = formFilter === "ALL" || i.form_type === formFilter;
+      const byYear = yearFilter === "ALL" || (i.fiscal_year ?? 0) === yearFilter;
+      return byForm && byYear;
+    });
+  }, [formFilter, items, yearFilter]);
   const byYearFiltered = filteredItems.reduce<Record<number, typeof filteredItems>>((acc, item) => {
     const year = item.fiscal_year ?? 0;
     if (!acc[year]) acc[year] = [];
@@ -57,20 +63,37 @@ export function SymbolSec() {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageNarrative
+        title="公告叙事"
+        description="用 10-K / 10-Q 看经营主线，用 8-K 看突发事件，把业绩变化和信息披露节奏放在同一时间轴观察。"
+      />
       {isLoading ? (
         <div className="card flex h-[300px] items-center justify-center">
-          <div className="text-sm text-text-tertiary">Loading…</div>
+          <div className="text-sm text-text-tertiary">加载公告数据中…</div>
         </div>
       ) : items.length === 0 ? (
-        <div className="card flex h-[300px] items-center justify-center">
-          <div className="text-sm text-text-tertiary">No SEC filings available.</div>
+        <div className="card p-4">
+          <EmptyDataState
+            title="暂无 SEC 申报数据"
+            detail="可能是该标的数据覆盖不足，或供应商当前无可用返回。"
+            actions={
+              <>
+                <Link to="/global/data-assets?table=sec_files" className="chip">
+                  查看 SEC 覆盖
+                </Link>
+                <Link to={`/symbol/${sym}/raw`} className="chip">
+                  查看原始 JSON
+                </Link>
+              </>
+            }
+          />
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="card p-3 lg:col-span-2">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-                Filing Mix
+                申报结构分布
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -81,7 +104,7 @@ export function SymbolSec() {
                     formFilter === "ALL" ? "border-accent text-accent" : "",
                   )}
                 >
-                  ALL ({items.length})
+                  全部 ({items.length})
                 </button>
                 {Object.entries(formCounts).map(([form, n]) => (
                   <button
@@ -110,7 +133,36 @@ export function SymbolSec() {
                   ],
                 }}
                 style={{ height: 180 }}
+                onEvents={{
+                  click: (params: { name?: string }) => {
+                    if (!params?.name) return;
+                    setFormFilter(params.name);
+                  },
+                }}
               />
+            </div>
+          </div>
+
+          <div className="card p-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">财年下钻</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setYearFilter("ALL")}
+                className={cn("chip", yearFilter === "ALL" ? "border-accent text-accent" : "")}
+              >
+                全部年份
+              </button>
+              {years.map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => setYearFilter(y)}
+                  className={cn("chip", yearFilter === y ? "border-accent text-accent" : "")}
+                >
+                  财年 {y}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -118,7 +170,7 @@ export function SymbolSec() {
           {yearsFiltered.map((year) => (
             <div key={year} className="card p-3">
               <div className="mb-2 text-sm font-semibold text-text-primary">
-                FY {year}
+                财年 {year}
               </div>
               <div className="flex flex-wrap gap-2">
                 {byYearFiltered[year]?.map((f) => (
@@ -145,23 +197,27 @@ export function SymbolSec() {
           {/* Full table */}
           <div className="card overflow-auto p-2">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-              All Filings ({filteredItems.length}) {formFilter !== "ALL" ? `· ${formFilter}` : ""}
+              全部申报（{filteredItems.length}） {formFilter !== "ALL" ? `· ${formFilter}` : ""}
             </div>
-            <table className="w-full text-xs">
+            <table className="table-modern">
               <thead>
                 <tr className="border-b border-border-soft text-left text-text-tertiary">
-                  <th className="px-2 py-1.5">Form</th>
-                  <th className="px-2 py-1.5">Filing Date</th>
-                  <th className="px-2 py-1.5">Fiscal Year</th>
-                  <th className="px-2 py-1.5">Period</th>
-                  <th className="px-2 py-1.5 text-right">Keys</th>
+                  <th className="px-2 py-1.5">表单</th>
+                  <th className="px-2 py-1.5">申报日期</th>
+                  <th className="px-2 py-1.5">财年</th>
+                  <th className="px-2 py-1.5">期间</th>
+                  <th className="px-2 py-1.5 text-right">字段估计</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredItems.slice(0, 50).map((f, i) => (
                   <tr
                     key={f.id}
-                    className={cn("border-b border-border-soft/50", i % 2 === 0 ? "bg-bg-2/30" : "")}
+                    className={cn(
+                      "border-b border-border-soft/50",
+                      i % 2 === 0 ? "bg-bg-2/30" : "",
+                      formFilter !== "ALL" && f.form_type === formFilter ? "bg-accent/5" : "",
+                    )}
                   >
                     <td className="px-2 py-1.5">
                       <FormTypeBadge type={f.form_type} />

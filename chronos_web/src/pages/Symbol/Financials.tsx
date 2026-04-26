@@ -1,6 +1,6 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 
 import { api, endpoints } from "@/lib/api";
@@ -8,6 +8,8 @@ import type { StaticSeriesResponse } from "@/lib/types";
 import { echartsBase, COLORS } from "@/lib/theme";
 import { fmtCap, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { EmptyDataState } from "@/components/ui/EmptyDataState";
+import { PageNarrative } from "@/components/ui/PageNarrative";
 
 const CATEGORIES = [
   { key: "income_statement_annual", label: "利润表（年）" },
@@ -22,6 +24,22 @@ type FinancialRow = {
   fiscal_year: number | null;
   fiscal_quarter: number | null;
   raw_payload: Record<string, unknown>;
+};
+
+const METRIC_COLUMN_MAP: Record<string, keyof MetricValues> = {
+  营收: "revenue",
+  毛利润: "grossProfit",
+  营业利润: "operatingIncome",
+  净利润: "netIncome",
+  每股收益: "eps",
+};
+
+type MetricValues = {
+  revenue: number | null;
+  grossProfit: number | null;
+  operatingIncome: number | null;
+  netIncome: number | null;
+  eps: number | null;
 };
 
 export function SymbolFinancials() {
@@ -44,16 +62,25 @@ export function SymbolFinancials() {
   });
 
   const rows = (data?.items ?? []) as FinancialRow[];
-  const latest = rows[0];
+  const [selectedRowKey, setSelectedRowKey] = useState<string>("");
+  const [focusedMetric, setFocusedMetric] = useState<keyof MetricValues | "">("");
+
+  useEffect(() => {
+    setSelectedRowKey(rowKey(rows[0]));
+    setFocusedMetric("");
+  }, [category, period, sym, rows.length]);
+
+  const selectedRow = useMemo(() => {
+    if (!rows.length) return undefined;
+    return rows.find((r) => rowKey(r) === selectedRowKey) ?? rows[0];
+  }, [rows, selectedRowKey]);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="card p-3">
-        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-tertiary">财务叙事</div>
-        <div className="text-sm text-text-secondary">
-          用同一期间看“收入→利润→现金流”，判断增长质量是否可持续，而不是只看单个 EPS。
-        </div>
-      </div>
+      <PageNarrative
+        title="财务叙事"
+        description="用同一期间看收入-利润-现金流，判断增长质量是否可持续，而不是只看单个 EPS。"
+      />
       {/* Category selector */}
       <div className="flex flex-wrap gap-2">
         {CATEGORIES.map((c) => (
@@ -75,11 +102,28 @@ export function SymbolFinancials() {
 
       {isLoading ? (
         <div className="card flex h-[400px] items-center justify-center">
-          <div className="text-sm text-text-tertiary">Loading…</div>
+          <div className="text-sm text-text-tertiary">加载财务数据中…</div>
         </div>
       ) : !rows.length ? (
-        <div className="card flex h-[400px] items-center justify-center">
-          <div className="text-sm text-text-tertiary">该分类暂无数据。</div>
+        <div className="card p-4">
+          <EmptyDataState
+            title="该财务分类暂无数据"
+            detail="可切换到其它财务分类，或去原始数据页核对接口返回。"
+            actions={
+              <>
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => setSelected(CATEGORIES[0]!)}
+                >
+                  切回利润表（年）
+                </button>
+                <Link to={`/symbol/${sym}/raw`} className="chip">
+                  查看原始 JSON
+                </Link>
+              </>
+            }
+          />
         </div>
       ) : (
         <>
@@ -87,29 +131,74 @@ export function SymbolFinancials() {
           <div className="card grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
             <MetricCard
               label="营收"
-              value={extractValue(latest, "revenue")}
+              value={extractValue(selectedRow, "revenue")}
+              active={focusedMetric === "revenue"}
+              onClick={() => setFocusedMetric("revenue")}
             />
             <MetricCard
               label="净利润"
-              value={extractValue(latest, "netIncome")}
+              value={extractValue(selectedRow, "netIncome")}
+              active={focusedMetric === "netIncome"}
+              onClick={() => setFocusedMetric("netIncome")}
             />
             <MetricCard
               label="每股收益"
-              value={extractValue(latest, "eps")}
+              value={extractValue(selectedRow, "eps")}
               digits={2}
+              active={focusedMetric === "eps"}
+              onClick={() => setFocusedMetric("eps")}
             />
             <MetricCard
               label="营业利润"
-              value={extractValue(latest, "operatingIncome")}
+              value={extractValue(selectedRow, "operatingIncome")}
+              active={focusedMetric === "operatingIncome"}
+              onClick={() => setFocusedMetric("operatingIncome")}
             />
           </div>
 
-          {/* Waterfall chart for revenue breakdown */}
-          <RevenueWaterfall rows={rows} />
+          <div className="card p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-2xs text-text-tertiary">
+                当前分析期间：{formatPeriodTag(selectedRow)}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {rows.map((r) => {
+                  const key = rowKey(r);
+                  const isActive = key === rowKey(selectedRow);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedRowKey(key)}
+                      className={cn(
+                        "rounded border px-2 py-0.5 text-2xs",
+                        isActive
+                          ? "border-accent/40 bg-accent/10 text-accent"
+                          : "border-border-soft text-text-tertiary hover:bg-bg-2",
+                      )}
+                      title="点击切换图表/指标到该期"
+                    >
+                      {formatPeriodTag(r)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="text-2xs text-text-tertiary">点击图中指标可高亮下方表格对应列。</div>
+          </div>
+
+          {/* Waterfall chart for selected period */}
+          <RevenueWaterfall
+            row={selectedRow}
+            onMetricClick={(metricName) => {
+              const key = METRIC_COLUMN_MAP[metricName];
+              if (key) setFocusedMetric(key);
+            }}
+          />
 
           {/* Time series table */}
           <div className="card overflow-auto p-2">
-            <table className="w-full text-xs">
+            <table className="table-modern">
               <thead>
                 <tr className="border-b border-border-soft text-left text-text-tertiary">
                   <th className="px-2 py-1.5">财年</th>
@@ -128,7 +217,9 @@ export function SymbolFinancials() {
                     className={cn(
                       "border-b border-border-soft/50",
                       i % 2 === 0 ? "bg-bg-2/30" : "",
+                      rowKey(r) === rowKey(selectedRow) ? "bg-accent/5" : "",
                     )}
+                    onClick={() => setSelectedRowKey(rowKey(r))}
                   >
                     <td className="px-2 py-1.5 font-mono text-text-primary">
                       {r.fiscal_year ?? "—"}
@@ -136,19 +227,44 @@ export function SymbolFinancials() {
                     <td className="px-2 py-1.5 text-text-secondary">
                       {r.fiscal_quarter ?? "—"}
                     </td>
-                    <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
+                    <td
+                      className={cn(
+                        "px-2 py-1.5 text-right font-mono text-text-secondary",
+                        focusedMetric === "revenue" ? "bg-accent/10 text-text-primary" : "",
+                      )}
+                    >
                       {fmtCap(extractValue(r, "revenue"))}
                     </td>
-                    <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
+                    <td
+                      className={cn(
+                        "px-2 py-1.5 text-right font-mono text-text-secondary",
+                        focusedMetric === "grossProfit" ? "bg-accent/10 text-text-primary" : "",
+                      )}
+                    >
                       {fmtCap(extractValue(r, "grossProfit"))}
                     </td>
-                    <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
+                    <td
+                      className={cn(
+                        "px-2 py-1.5 text-right font-mono text-text-secondary",
+                        focusedMetric === "operatingIncome" ? "bg-accent/10 text-text-primary" : "",
+                      )}
+                    >
                       {fmtCap(extractValue(r, "operatingIncome"))}
                     </td>
-                    <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
+                    <td
+                      className={cn(
+                        "px-2 py-1.5 text-right font-mono text-text-secondary",
+                        focusedMetric === "netIncome" ? "bg-accent/10 text-text-primary" : "",
+                      )}
+                    >
                       {fmtCap(extractValue(r, "netIncome"))}
                     </td>
-                    <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
+                    <td
+                      className={cn(
+                        "px-2 py-1.5 text-right font-mono text-text-secondary",
+                        focusedMetric === "eps" ? "bg-accent/10 text-text-primary" : "",
+                      )}
+                    >
                       {fmtNum(extractValue(r, "eps"), 2)}
                     </td>
                   </tr>
@@ -173,25 +289,42 @@ function MetricCard({
   label,
   value,
   digits = 0,
+  active = false,
+  onClick,
 }: {
   label: string;
   value: number | null;
   digits?: number;
+  active?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-1">
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-col gap-1 rounded-md px-1 py-1 text-left transition-colors",
+        active ? "bg-accent/10" : "hover:bg-bg-2",
+      )}
+    >
       <div className="text-xs text-text-tertiary">{label}</div>
       <div className="kpi-num">
         {value === null ? "—" : digits === 0 ? fmtCap(value) : fmtNum(value, digits)}
       </div>
-    </div>
+    </button>
   );
 }
 
-function RevenueWaterfall({ rows }: { rows: FinancialRow[] }) {
-  if (!rows.length || !rows[0]?.raw_payload) return null;
+function RevenueWaterfall({
+  row,
+  onMetricClick,
+}: {
+  row?: FinancialRow;
+  onMetricClick?: (metricName: string) => void;
+}) {
+  if (!row?.raw_payload) return null;
 
-  const payload = rows[0].raw_payload as Record<string, unknown>;
+  const payload = row.raw_payload as Record<string, unknown>;
   const revenue = typeof payload.revenue === "number" ? payload.revenue : 0;
   const cogs = typeof payload.costOfGoodsSold === "number" ? payload.costOfGoodsSold : 0;
   const grossProfit = typeof payload.grossProfit === "number" ? payload.grossProfit : 0;
@@ -239,7 +372,6 @@ function RevenueWaterfall({ rows }: { rows: FinancialRow[] }) {
       top: 4,
     },
     tooltip: {
-      ...echartsBase.tooltip,
       trigger: "axis",
       formatter: (params: { name: string; value: number }[]) => {
         const p = params[0];
@@ -284,7 +416,25 @@ function RevenueWaterfall({ rows }: { rows: FinancialRow[] }) {
 
   return (
     <div className="card p-2">
-      <ReactECharts option={option} style={{ height: 280 }} />
+      <ReactECharts
+        option={option}
+        style={{ height: 280 }}
+        onEvents={{
+          click: (params: { name?: string }) => {
+            if (params?.name) onMetricClick?.(params.name);
+          },
+        }}
+      />
     </div>
   );
+}
+
+function rowKey(row: FinancialRow | undefined): string {
+  if (!row) return "";
+  return `${row.fiscal_year ?? "NA"}-${row.fiscal_quarter ?? "NA"}`;
+}
+
+function formatPeriodTag(row: FinancialRow | undefined): string {
+  if (!row) return "—";
+  return row.fiscal_quarter ? `${row.fiscal_year ?? "—"}Q${row.fiscal_quarter}` : `${row.fiscal_year ?? "—"}年`;
 }

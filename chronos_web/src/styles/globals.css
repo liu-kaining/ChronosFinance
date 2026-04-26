@@ -85,6 +85,9 @@ body,
 
 body {
   background: rgb(var(--bg-0));
+  background-image:
+    radial-gradient(circle at 8% -20%, rgb(var(--accent) / 0.08), transparent 38%),
+    radial-gradient(circle at 92% -10%, rgb(var(--purple) / 0.07), transparent 30%);
   color: rgb(var(--text-0));
   font-family:
     Inter,
@@ -146,11 +149,11 @@ samp,
  * ========================================================= */
 @layer components {
   .card {
-    @apply rounded-card bg-panel border border-border-soft shadow-card;
+    @apply rounded-card border border-border-soft/90 bg-panel/90 shadow-card backdrop-blur-sm;
   }
 
   .card-hover {
-    @apply transition-colors hover:bg-panel-hi;
+    @apply transition-all hover:-translate-y-[1px] hover:bg-panel-hi;
   }
 
   .kpi-num {
@@ -171,6 +174,18 @@ samp,
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded-md border border-border-soft bg-bg-2 px-1.5 py-0.5 text-2xs text-text-secondary;
+    @apply inline-flex items-center gap-1 rounded-md border border-border-soft bg-bg-2/80 px-2 py-0.5 text-2xs text-text-secondary transition-colors hover:bg-bg-3;
+  }
+
+  .table-modern {
+    @apply w-full text-xs;
+  }
+
+  .table-modern thead tr {
+    @apply border-b border-border-soft text-left text-text-tertiary;
+  }
+
+  .table-modern tbody tr {
+    @apply border-b border-border-soft/50 transition-colors hover:bg-bg-2/60;
   }
 }

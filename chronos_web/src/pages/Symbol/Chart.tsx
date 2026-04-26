@@ -12,6 +12,7 @@ import {
 import { api, endpoints } from "@/lib/api";
 import type { PricesSeriesResponse } from "@/lib/types";
 import { tvChartOptions, candleStyle, volumeStyle, maColors } from "@/lib/tv-theme";
+import { PageNarrative } from "@/components/ui/PageNarrative";
 
 const CHART_HEIGHT = 420;
 const VOLUME_HEIGHT = 80;
@@ -174,7 +175,7 @@ export function SymbolChart() {
   if (isLoading) {
     return (
       <div className="card flex h-[500px] items-center justify-center">
-        <div className="text-sm text-text-tertiary">Loading chart…</div>
+        <div className="text-sm text-text-tertiary">加载价格图表中…</div>
       </div>
     );
   }
@@ -182,13 +183,17 @@ export function SymbolChart() {
   if (error || !data?.items?.length) {
     return (
       <div className="card flex h-[500px] items-center justify-center">
-        <div className="text-sm text-text-tertiary">No price data available.</div>
+        <div className="text-sm text-text-tertiary">暂无价格数据。</div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
+      <PageNarrative
+        title="价格叙事"
+        description="先看趋势与均线结构，再结合成交量确认突破/回撤是否有资金支持。"
+      />
       {/* Legend */}
       <div className="flex items-center gap-4 text-xs">
         <div className="flex items-center gap-1.5">
@@ -200,7 +205,7 @@ export function SymbolChart() {
           <span className="text-text-secondary">MA50</span>
         </div>
         <div className="ml-auto text-text-tertiary">
-          {data.rows} bars · {data.items[0]?.date} → {data.items[data.items.length - 1]?.date}
+          {data.rows} 根K线 · {data.items[0]?.date} 至 {data.items[data.items.length - 1]?.date}
         </div>
       </div>
 

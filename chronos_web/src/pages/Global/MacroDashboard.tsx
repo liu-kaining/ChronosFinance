@@ -7,6 +7,7 @@ import type { MacroSeriesListResponse, MacroSeriesDataResponse } from "@/lib/typ
 import { echartsBase, COLORS } from "@/lib/theme";
 import { fmtNum, fmtDay } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { PageNarrative } from "@/components/ui/PageNarrative";
 
 export function MacroDashboardPage() {
   const { data: seriesList, isLoading } = useQuery({
@@ -38,10 +39,14 @@ export function MacroDashboardPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageNarrative
+        title="宏观叙事"
+        description="先看利率与增长关键序列，再看时间趋势，最后判断当前宏观环境对行业风格的约束。"
+      />
       <div className="card p-3">
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
           <LineChart size={14} />
-          <span>Macro Series Available</span>
+          <span>可用宏观序列</span>
           <span className="ml-auto font-mono text-text-secondary">{series.length}</span>
         </div>
 
@@ -56,12 +61,12 @@ export function MacroDashboardPage() {
               >
                 <span className="font-mono text-text-primary">{s.series_id}</span>
                 <span className="text-2xs text-text-tertiary">
-                  {s.rows} pts · {fmtDay(s.date_min)} → {fmtDay(s.date_max)}
+                  {s.rows} 点 · {fmtDay(s.date_min)} 至 {fmtDay(s.date_max)}
                 </span>
               </div>
             ))}
             {series.length > 20 && (
-              <span className="chip text-text-tertiary">+{series.length - 20} more</span>
+              <span className="chip text-text-tertiary">+{series.length - 20} 条</span>
             )}
           </div>
         )}
@@ -71,7 +76,7 @@ export function MacroDashboardPage() {
       {treasuryData && (
         <div className="card p-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-            {treasuryData.series_id} — Last 365 Days
+            {treasuryData.series_id} · 近 365 天
           </div>
           <MacroLineChart data={treasuryData.items ?? []} />
         </div>
@@ -79,13 +84,13 @@ export function MacroDashboardPage() {
 
       {/* Series list table */}
       <div className="card overflow-auto p-2">
-        <table className="w-full text-xs">
+        <table className="table-modern">
           <thead>
             <tr className="border-b border-border-soft text-left text-text-tertiary">
-              <th className="px-2 py-1.5">Series ID</th>
-              <th className="px-2 py-1.5 text-right">Points</th>
-              <th className="px-2 py-1.5">Start</th>
-              <th className="px-2 py-1.5">End</th>
+              <th className="px-2 py-1.5">序列 ID</th>
+              <th className="px-2 py-1.5 text-right">点数</th>
+              <th className="px-2 py-1.5">开始</th>
+              <th className="px-2 py-1.5">结束</th>
             </tr>
           </thead>
           <tbody>
@@ -110,18 +115,17 @@ export function MacroDashboardPage() {
 function MacroLineChart({ data }: { data: Array<{ date: string; value: number | null }> }) {
   const validData = data.filter((d) => d.value != null);
   if (validData.length === 0) {
-    return <div className="py-8 text-center text-xs text-text-tertiary">No data</div>;
+    return <div className="py-8 text-center text-xs text-text-tertiary">暂无宏观序列数据</div>;
   }
 
   const option = {
     ...echartsBase,
     tooltip: {
-      ...echartsBase.tooltip,
       trigger: "axis",
       formatter: (params: { axisValue: string; data: number }[]) => {
         const p = params[0];
         if (!p) return "";
-        return `<b>${p.axisValue}</b><br/>${fmtNum(p.data, 3)}`;
+        return `<b>${p.axisValue}</b><br/>数值：${fmtNum(p.data, 3)}`;
       },
     },
     grid: { left: 48, right: 16, top: 16, bottom: 32 },
@@ -151,8 +155,8 @@ function MacroLineChart({ data }: { data: Array<{ date: string; value: number | 
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: "rgba(41,98,255,0.25)" },
-              { offset: 1, color: "rgba(41,98,255,0.02)" },
+              { offset: 0, color: `${COLORS.accent.replace("rgb(", "rgba(").replace(")", ",0.25)")}` },
+              { offset: 1, color: `${COLORS.accent.replace("rgb(", "rgba(").replace(")", ",0.02)")}` },
             ],
           },
         },

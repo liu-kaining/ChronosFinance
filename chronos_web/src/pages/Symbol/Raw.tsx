@@ -1,20 +1,21 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { api, endpoints } from "@/lib/api";
 import type { SymbolInventory, PricesSeriesResponse, StaticSeriesResponse, EarningsSeriesResponse } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { EmptyDataState } from "@/components/ui/EmptyDataState";
 
 type DataSource = "inventory" | "prices" | "earnings" | "income" | "balance" | "cashflow";
 
 const SOURCES: { key: DataSource; label: string }[] = [
-  { key: "inventory", label: "Inventory" },
-  { key: "prices", label: "Prices (Last 30)" },
-  { key: "earnings", label: "Earnings" },
-  { key: "income", label: "Income Statement" },
-  { key: "balance", label: "Balance Sheet" },
-  { key: "cashflow", label: "Cash Flow" },
+  { key: "inventory", label: "标的清单" },
+  { key: "prices", label: "价格（最近30条）" },
+  { key: "earnings", label: "财报事件" },
+  { key: "income", label: "利润表" },
+  { key: "balance", label: "资产负债表" },
+  { key: "cashflow", label: "现金流量表" },
 ];
 
 export function SymbolRaw() {
@@ -98,6 +99,12 @@ export function SymbolRaw() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="card p-3">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-tertiary">原始数据说明</div>
+        <div className="text-sm text-text-secondary">
+          这里展示后端返回的原始 JSON，用于核对字段与排障；日常决策建议优先看概览、财务与事件页。
+        </div>
+      </div>
       {/* Source selector */}
       <div className="flex flex-wrap gap-2">
         {SOURCES.map((s) => (
@@ -127,9 +134,26 @@ export function SymbolRaw() {
             {rawData ? `${JSON.stringify(rawData).length.toLocaleString()} bytes` : "—"}
           </span>
         </div>
-        <pre className="overflow-auto rounded-md bg-bg-2 p-3 font-mono text-2xs leading-relaxed text-text-secondary">
-          {rawData ? JSON.stringify(rawData, null, 2) : "Loading…"}
-        </pre>
+        {rawData ? (
+          <pre className="overflow-auto rounded-md bg-bg-2 p-3 font-mono text-2xs leading-relaxed text-text-secondary">
+            {JSON.stringify(rawData, null, 2)}
+          </pre>
+        ) : (
+          <EmptyDataState
+            title="该数据源暂无返回"
+            detail="你可以切换数据源，或到数据资产页面检查该表是否已有数据。"
+            actions={
+              <>
+                <Link to="/global/data-assets" className="chip">
+                  去看数据资产
+                </Link>
+                <button type="button" className="chip" onClick={() => setSource("inventory")}>
+                  切回标的清单
+                </button>
+              </>
+            }
+          />
+        )}
       </div>
     </div>
   );

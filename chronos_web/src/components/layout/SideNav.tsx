@@ -45,7 +45,7 @@ const GLOBAL: NavItem[] = [
 
 export function SideNav() {
   return (
-    <nav className="flex w-56 shrink-0 flex-col gap-4 border-r border-border-soft bg-panel-lo px-2 py-3">
+    <nav className="flex w-60 shrink-0 flex-col gap-4 border-r border-border-soft/80 bg-panel-lo/90 px-3 py-4 backdrop-blur-sm">
       <Section title={null} items={PRIMARY} />
       <Section title="全局" items={GLOBAL} />
     </nav>
@@ -54,9 +54,9 @@ export function SideNav() {
 
 function Section({ title, items }: { title: string | null; items: NavItem[] }) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1">
       {title ? (
-        <div className="px-2 pb-1 text-2xs font-semibold uppercase tracking-wider text-text-tertiary">
+        <div className="px-2 pb-1 text-2xs font-semibold uppercase tracking-wider text-text-tertiary/90">
           {title}
         </div>
       ) : null}
@@ -67,9 +67,9 @@ function Section({ title, items }: { title: string | null; items: NavItem[] }) {
           end={it.end}
           className={({ isActive }) =>
             cn(
-              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+              "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all",
               isActive
-                ? "bg-bg-3 text-text-primary"
+                ? "bg-accent/10 text-text-primary shadow-sm ring-1 ring-accent/20"
                 : "text-text-secondary hover:bg-bg-2 hover:text-text-primary",
             )
           }
