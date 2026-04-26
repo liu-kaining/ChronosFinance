@@ -4,7 +4,7 @@
  */
 
 interface Props {
-   number[];
+  data: number[];
   width?: number;
   height?: number;
   color?: string;
@@ -76,7 +76,7 @@ export function Sparkline({
  * SparklineBar - Mini bar chart variant
  */
 interface BarProps {
-   number[];
+  data: number[];
   width?: number;
   height?: number;
   positiveColor?: string;

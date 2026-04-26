@@ -376,7 +376,7 @@ function SectorTreemap({
     series: [
       {
         type: "treemap",
-         data.map((d) => {
+        data: data.map((d) => {
           const move = d.move ?? 0;
           const alpha = Math.min(Math.abs(move) * 0.1 + 0.15, 0.4);
           const color =

@@ -185,7 +185,7 @@ export function WatchlistPage() {
           {filteredData.map((item) => (
             <WatchlistCard
               key={item.symbol}
-               item}
+              item={item}
               onRemove={() => removeFromWatchlist(item.symbol)}
             />
           ))}
@@ -200,7 +200,7 @@ export function WatchlistPage() {
             <span>近期事件</span>
           </div>
           <Timeline
-             upcomingEvents}
+            events={upcomingEvents}
             onEventClick={(event) => {
               if (event.symbol) {
                 window.location.href = `/symbol/${event.symbol}/evidence`;

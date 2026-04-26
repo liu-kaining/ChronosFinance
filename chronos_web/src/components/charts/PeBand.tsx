@@ -24,7 +24,7 @@ interface PeBandData {
 }
 
 interface Props {
-   PeDataPoint[];
+  data: PeDataPoint[];
   title?: string;
   height?: number;
   showPrice?: boolean;
@@ -73,7 +73,7 @@ export function PeBand({ data, title, height = 280, showPrice = false }: Props) 
     },
     legend: {
       ...echartsBase.legend,
-       showPrice ? ["PE", "股价", "P90", "P75", "P50", "P25", "P10"] : ["PE", "P90", "P75", "P50", "P25", "P10"],
+      data: showPrice ? ["PE", "股价", "P90", "P75", "P50", "P25", "P10"] : ["PE", "P90", "P75", "P50", "P25", "P10"],
       top: 0,
       textStyle: { fontSize: 10 },
     },
@@ -85,7 +85,7 @@ export function PeBand({ data, title, height = 280, showPrice = false }: Props) 
     },
     xAxis: {
       type: "category",
-       dates,
+      data: dates,
       axisLabel: {
         color: COLORS.text1,
         fontSize: 10,
@@ -121,7 +121,7 @@ export function PeBand({ data, title, height = 280, showPrice = false }: Props) 
       {
         type: "line",
         name: "P90",
-         Array(data.length).fill(p90),
+        data: Array(data.length).fill(p90),
         smooth: true,
         lineStyle: { width: 0 },
         areaStyle: { color: `rgba(41,98,255,0.05)` },
@@ -131,7 +131,7 @@ export function PeBand({ data, title, height = 280, showPrice = false }: Props) 
       {
         type: "line",
         name: "P75",
-         Array(data.length).fill(p75),
+        data: Array(data.length).fill(p75),
         smooth: true,
         lineStyle: { width: 0 },
         areaStyle: { color: `rgba(41,98,255,0.1)` },
@@ -141,7 +141,7 @@ export function PeBand({ data, title, height = 280, showPrice = false }: Props) 
       {
         type: "line",
         name: "P50",
-         Array(data.length).fill(p50),
+        data: Array(data.length).fill(p50),
         smooth: true,
         lineStyle: { width: 1, color: COLORS.text2, type: "dashed" },
         symbol: "none",
@@ -150,7 +150,7 @@ export function PeBand({ data, title, height = 280, showPrice = false }: Props) 
       {
         type: "line",
         name: "P25",
-         Array(data.length).fill(p25),
+        data: Array(data.length).fill(p25),
         smooth: true,
         lineStyle: { width: 0 },
         symbol: "none",
@@ -159,7 +159,7 @@ export function PeBand({ data, title, height = 280, showPrice = false }: Props) 
       {
         type: "line",
         name: "P10",
-         Array(data.length).fill(p10),
+        data: Array(data.length).fill(p10),
         smooth: true,
         lineStyle: { width: 0 },
         areaStyle: { color: "transparent" },
@@ -170,7 +170,7 @@ export function PeBand({ data, title, height = 280, showPrice = false }: Props) 
       {
         type: "line",
         name: "PE",
-         data.map((d) => d.pe),
+        data: data.map((d) => d.pe),
         smooth: true,
         lineStyle: { width: 2, color: COLORS.accent },
         itemStyle: { color: COLORS.accent },
@@ -182,7 +182,7 @@ export function PeBand({ data, title, height = 280, showPrice = false }: Props) 
         type: "line",
         name: "股价",
         yAxisIndex: 1,
-         data.map((d) => d.price),
+        data: data.map((d) => d.price),
         smooth: true,
         lineStyle: { width: 2, color: COLORS.accent2, type: "dashed" },
         itemStyle: { color: COLORS.accent2 },
@@ -267,7 +267,7 @@ export function PeComparison({ items, title, height = 200 }: PeComparisonProps) 
     },
     yAxis: {
       type: "category",
-       sorted.map((d) => d.name),
+      data: sorted.map((d) => d.name),
       axisLabel: {
         color: COLORS.text1,
         fontSize: 10,
@@ -276,7 +276,7 @@ export function PeComparison({ items, title, height = 200 }: PeComparisonProps) 
     series: [
       {
         type: "bar",
-         sorted.map((d) => ({
+        data: sorted.map((d) => ({
           value: d.pe,
           itemStyle: {
             color: d.isCurrent ? COLORS.accent : COLORS.bg3,

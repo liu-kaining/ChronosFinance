@@ -73,7 +73,7 @@ export function BalanceTree({
     series: [
       {
         type: "treemap",
-         treeData,
+        data: treeData,
         width: "100%",
         height: "100%",
         roam: false,

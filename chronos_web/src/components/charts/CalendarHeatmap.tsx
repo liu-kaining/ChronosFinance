@@ -13,7 +13,7 @@ interface CalendarDataPoint {
 }
 
 interface Props {
-   CalendarDataPoint[];
+  data: CalendarDataPoint[];
   year?: number;
   height?: number;
   colorRange?: [string, string];
@@ -81,7 +81,7 @@ export function CalendarHeatmap({
       {
         type: "heatmap",
         coordinateSystem: "calendar",
-         data.map((d) => [d.date, d.value]),
+        data: data.map((d) => [d.date, d.value]),
       },
     ],
   };
@@ -95,7 +95,7 @@ export function CalendarHeatmap({
 interface MiniCalendarProps {
   month: number; // 0-11
   year?: number;
-   Array<{ date: string; count: number; highlight?: boolean }>;
+  data: Array<{ date: string; count: number; highlight?: boolean }>;
   onDateClick?: (date: string) => void;
 }
 

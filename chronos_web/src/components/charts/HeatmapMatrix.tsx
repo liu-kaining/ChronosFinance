@@ -19,7 +19,7 @@ interface HeatmapData {
 }
 
 interface Props {
-   HeatmapData[];
+  data: HeatmapData[];
   onSectorClick?: (sector: string) => void;
 }
 
@@ -59,7 +59,7 @@ export function HeatmapMatrix({ data, onSectorClick }: Props) {
     tooltip: {
       ...echartsBase.tooltip,
       position: "top",
-      formatter: (params: {  [number, number, number] }) => {
+      formatter: (params: { data: [number, number, number] }) => {
         const [xIndex, yIndex, value] = params.data;
         const sector = sectors[yIndex];
         const period = periods[xIndex];
@@ -74,14 +74,14 @@ export function HeatmapMatrix({ data, onSectorClick }: Props) {
     },
     xAxis: {
       type: "category",
-       periods.map((p) => PERIOD_LABELS[p]),
+      data: periods.map((p) => PERIOD_LABELS[p]),
       axisLine: { lineStyle: { color: COLORS.borderSoft } },
       axisLabel: { color: COLORS.text1, fontSize: 11 },
       splitArea: { show: true, areaStyle: { color: ["transparent", "rgba(255,255,255,0.02)"] } },
     },
     yAxis: {
       type: "category",
-       sectors,
+      data: sectors,
       axisLine: { lineStyle: { color: COLORS.borderSoft } },
       axisLabel: { color: COLORS.text1, fontSize: 11, width: 110, overflow: "truncate" },
       splitArea: { show: true, areaStyle: { color: ["transparent", "rgba(255,255,255,0.02)"] } },
@@ -104,7 +104,7 @@ export function HeatmapMatrix({ data, onSectorClick }: Props) {
     series: [
       {
         type: "heatmap",
-         heatmapData,
+        data: heatmapData,
         label: {
           show: true,
           formatter: (params: { data: [number, number, number] }) => {
@@ -129,7 +129,7 @@ export function HeatmapMatrix({ data, onSectorClick }: Props) {
       option={option}
       style={{ height: Math.max(300, data.length * 32 + 80) }}
       onEvents={{
-        click: (params: {  [number, number, number] }) => {
+        click: (params: { data: [number, number, number] }) => {
           const yIndex = params.data[1];
           const sector = sectors[yIndex];
           if (sector && onSectorClick) {

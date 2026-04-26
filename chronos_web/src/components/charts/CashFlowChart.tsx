@@ -16,7 +16,7 @@ interface CashFlowData {
 }
 
 interface Props {
-   CashFlowData[];
+  data: CashFlowData[];
   title?: string;
   height?: number;
   showFreeCashFlow?: boolean;
@@ -45,7 +45,7 @@ export function CashFlowChart({
   const series: Array<{
     type: string;
     name: string;
-     number[];
+    data: number[];
     stack?: string;
     smooth?: boolean;
     lineStyle?: { width: number; type?: string };
@@ -56,21 +56,21 @@ export function CashFlowChart({
     {
       type: "bar",
       name: "经营活动",
-       operatingData,
+      data: operatingData,
       stack: "cashflow",
       itemStyle: { color: COLORS.up },
     },
     {
       type: "bar",
       name: "投资活动",
-       investingData,
+      data: investingData,
       stack: "cashflow",
       itemStyle: { color: COLORS.down },
     },
     {
       type: "bar",
       name: "筹资活动",
-       financingData,
+      data: financingData,
       stack: "cashflow",
       itemStyle: { color: COLORS.accent },
     },
@@ -80,7 +80,7 @@ export function CashFlowChart({
     series.push({
       type: "line",
       name: "自由现金流",
-       fcfData,
+      data: fcfData,
       smooth: true,
       lineStyle: { width: 2, type: "dashed" },
       itemStyle: { color: COLORS.accent2 },
@@ -105,7 +105,7 @@ export function CashFlowChart({
     },
     legend: {
       ...echartsBase.legend,
-       showFreeCashFlow
+      data: showFreeCashFlow
         ? ["经营活动", "投资活动", "筹资活动", "自由现金流"]
         : ["经营活动", "投资活动", "筹资活动"],
       top: 0,
@@ -118,7 +118,7 @@ export function CashFlowChart({
     },
     xAxis: {
       type: "category",
-       dates,
+      data: dates,
       axisLabel: {
         color: COLORS.text1,
         fontSize: 10,
@@ -134,7 +134,7 @@ export function CashFlowChart({
       },
       splitLine: { lineStyle: { color: COLORS.borderSoft, type: "dashed" } },
     },
-     series,
+    series,
   };
 
   return (

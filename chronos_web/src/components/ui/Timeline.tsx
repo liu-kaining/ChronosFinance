@@ -31,7 +31,7 @@ export interface TimelineEvent {
 }
 
 interface Props {
-   TimelineEvent[];
+  events: TimelineEvent[];
   className?: string;
   onEventClick?: (event: TimelineEvent) => void;
 }
@@ -192,7 +192,7 @@ function TimelineItem({
  * CompactTimeline - Horizontal compact version for dashboards
  */
 interface CompactTimelineProps {
-   Array<{
+  items: Array<{
     date: string;
     label: string;
     type: EventType;

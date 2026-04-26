@@ -14,7 +14,7 @@ interface WaterfallItem {
 }
 
 interface Props {
-   WaterfallItem[];
+  data: WaterfallItem[];
   title?: string;
   height?: number;
 }
@@ -64,7 +64,7 @@ export function FinancialWaterfall({ data, title, height = 300 }: Props) {
     },
     xAxis: {
       type: "category",
-       data.map((d) => d.name),
+      data: data.map((d) => d.name),
       axisLine: { lineStyle: { color: COLORS.borderSoft } },
       axisLabel: {
         color: COLORS.text1,
@@ -96,12 +96,12 @@ export function FinancialWaterfall({ data, title, height = 300 }: Props) {
             color: "transparent",
           },
         },
-         plotData.map((d) => d.value[0]),
+        data: plotData.map((d) => d.value[0]),
       },
       {
         type: "bar",
         stack: "Total",
-         plotData.map((d, i) => {
+        data: plotData.map((d, i) => {
           const value = d.value[1] - d.value[0];
           return {
             value: value,

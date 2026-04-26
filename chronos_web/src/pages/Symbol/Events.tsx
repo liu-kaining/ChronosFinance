@@ -469,8 +469,14 @@ function EpsSurpriseHeatmap({
     ...echartsBase,
     tooltip: {
       position: "top",
-      formatter: (p: { data: [number, number, number] }) => {
-        const [x, y, v] = p.data;
+      formatter: (p: { data?: { value?: [number, number, number] } | [number, number, number]; value?: [number, number, number] }) => {
+        const tuple = Array.isArray(p.value)
+          ? p.value
+          : Array.isArray(p.data)
+            ? p.data
+            : p.data?.value;
+        if (!tuple) return "超预期：--";
+        const [x, y, v] = tuple;
         return `${years[x]} ${quarters[y]}<br/>超预期：${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
       },
     },
@@ -507,7 +513,18 @@ function EpsSurpriseHeatmap({
         label: {
           show: true,
           color: "#e5e7eb",
-          formatter: (p: { data: [number, number, number] }) => `${p.data[2]}%`,
+          formatter: (p: {
+            data?: { value?: [number, number, number] } | [number, number, number];
+            value?: [number, number, number];
+          }) => {
+            const tuple = Array.isArray(p.value)
+              ? p.value
+              : Array.isArray(p.data)
+                ? p.data
+                : p.data?.value;
+            if (!tuple || typeof tuple[2] !== "number") return "--";
+            return `${tuple[2]}%`;
+          },
         },
         emphasis: { itemStyle: { shadowBlur: 8, shadowColor: "rgba(0,0,0,0.35)" } },
       },

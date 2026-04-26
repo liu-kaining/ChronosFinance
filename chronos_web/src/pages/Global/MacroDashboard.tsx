@@ -200,7 +200,7 @@ export function MacroDashboardPage() {
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
           10Y-2Y 利差历史（经济衰退预警指标）
         </div>
-        <YieldSpread  MOCK_SPREAD_HISTORY} height={180} />
+        <YieldSpread history={MOCK_SPREAD_HISTORY} height={180} />
         <div className="mt-2 text-2xs text-text-tertiary">
           利差为负（曲线倒挂）往往预示经济衰退风险。当前利差处于历史低位。
         </div>
@@ -261,7 +261,7 @@ export function MacroDashboardPage() {
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
             {selectedSeriesData.series_id} · 近 365 天趋势
           </div>
-          <MacroLineChart  (selectedSeriesData.items ?? [])} />
+          <MacroLineChart data={selectedSeriesData.items ?? []} />
         </div>
       )}
 
@@ -295,7 +295,7 @@ export function MacroDashboardPage() {
   );
 }
 
-function MacroLineChart({  Array<{ date: string; value: number | null }> }) {
+function MacroLineChart({ data }: { data: Array<{ date: string; value: number | null }> }) {
   const validData = data.filter((d) => d.value != null);
   if (validData.length === 0) {
     return <div className="py-8 text-center text-xs text-text-tertiary">暂无宏观序列数据</div>;
@@ -314,7 +314,7 @@ function MacroLineChart({  Array<{ date: string; value: number | null }> }) {
     grid: { left: 48, right: 16, top: 16, bottom: 32 },
     xAxis: {
       type: "category",
-       validData.map((d) => fmtDay(d.date).slice(5)),
+      data: validData.map((d) => fmtDay(d.date).slice(5)),
       axisLine: { lineStyle: { color: COLORS.borderSoft } },
       axisLabel: { color: COLORS.text1, fontSize: 10 },
     },
@@ -327,7 +327,7 @@ function MacroLineChart({  Array<{ date: string; value: number | null }> }) {
     series: [
       {
         type: "line",
-         validData.map((d) => d.value),
+        data: validData.map((d) => d.value),
         smooth: true,
         lineStyle: { color: COLORS.accent, width: 1.5 },
         areaStyle: {

@@ -14,8 +14,8 @@ interface YieldPoint {
 
 interface Props {
   current: YieldPoint[];
-  comparison1?: {  YieldPoint[]; label: string };
-  comparison2?: {  YieldPoint[]; label: string };
+  comparison1?: { data: YieldPoint[]; label: string };
+  comparison2?: { data: YieldPoint[]; label: string };
   height?: number;
 }
 
@@ -37,7 +37,7 @@ export function YieldCurve({ current, comparison1, comparison2, height = 280 }: 
   const series: Array<{
     type: string;
     name: string;
-     number[];
+    data: number[];
     smooth?: boolean;
     lineStyle?: { width: number; type?: string };
     symbol?: string;
@@ -47,7 +47,7 @@ export function YieldCurve({ current, comparison1, comparison2, height = 280 }: 
     {
       type: "line",
       name: "当前",
-       sortedCurrent.map((d) => d.yield),
+      data: sortedCurrent.map((d) => d.yield),
       smooth: true,
       lineStyle: { width: 2 },
       symbol: "circle",
@@ -60,7 +60,7 @@ export function YieldCurve({ current, comparison1, comparison2, height = 280 }: 
     series.push({
       type: "line",
       name: comparison1.label,
-       sortByTenor(comparison1.data).map((d) => d.yield),
+      data: sortByTenor(comparison1.data).map((d) => d.yield),
       smooth: true,
       lineStyle: { width: 2, type: "dashed" },
       symbol: "none",
@@ -72,7 +72,7 @@ export function YieldCurve({ current, comparison1, comparison2, height = 280 }: 
     series.push({
       type: "line",
       name: comparison2.label,
-       sortByTenor(comparison2.data).map((d) => d.yield),
+      data: sortByTenor(comparison2.data).map((d) => d.yield),
       smooth: true,
       lineStyle: { width: 2, type: "dotted" },
       symbol: "none",
@@ -95,7 +95,7 @@ export function YieldCurve({ current, comparison1, comparison2, height = 280 }: 
     },
     legend: {
       ...echartsBase.legend,
-       ["当前", comparison1?.label, comparison2?.label].filter(Boolean),
+      data: ["当前", comparison1?.label, comparison2?.label].filter(Boolean),
       top: 0,
     },
     grid: {
@@ -106,7 +106,7 @@ export function YieldCurve({ current, comparison1, comparison2, height = 280 }: 
     },
     xAxis: {
       type: "category",
-       tenors,
+      data: tenors,
       axisLabel: {
         color: COLORS.text1,
         fontSize: 10,
@@ -123,7 +123,7 @@ export function YieldCurve({ current, comparison1, comparison2, height = 280 }: 
       },
       splitLine: { lineStyle: { color: COLORS.borderSoft, type: "dashed" } },
     },
-     series,
+    series,
   };
 
   return <ReactECharts option={option} style={{ height }} />;
@@ -138,7 +138,7 @@ interface SpreadPoint {
 }
 
 interface YieldSpreadProps {
-   SpreadPoint[];
+  data: SpreadPoint[];
   height?: number;
   recessionPeriods?: Array<{ start: string; end: string }>;
 }
@@ -173,7 +173,7 @@ export function YieldSpread({ data, height = 180, recessionPeriods }: YieldSprea
     },
     xAxis: {
       type: "category",
-       dates,
+      data: dates,
       axisLabel: {
         color: COLORS.text1,
         fontSize: 10,
@@ -191,7 +191,7 @@ export function YieldSpread({ data, height = 180, recessionPeriods }: YieldSprea
     series: [
       {
         type: "line",
-         values,
+        data: values,
         smooth: true,
         lineStyle: { width: 1.5, color: COLORS.accent },
         areaStyle: {
@@ -210,7 +210,7 @@ export function YieldSpread({ data, height = 180, recessionPeriods }: YieldSprea
         symbol: "none",
         markLine: {
           silent: true,
-           [
+          data: [
             {
               yAxis: 0,
               lineStyle: { color: COLORS.text2, type: "dashed" },

@@ -262,7 +262,7 @@ export function EventStreamPage() {
           />
         ) : (
           <Timeline
-             timelineEvents.slice(0, 20)}
+            events={timelineEvents.slice(0, 20)}
             onEventClick={(event) => {
               if (event.symbol) {
                 setSymbolFilter(event.symbol);
