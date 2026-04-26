@@ -5,71 +5,56 @@ import {
   LayoutDashboard,
   LineChart,
   CalendarClock,
-  ShieldCheck,
+  TrendingUp,
+  TrendingDown,
+  Activity,
   Sparkles,
   Database,
-  Activity,
-  TrendingUp,
+  ArrowRight,
+  Zap,
+  BarChart3,
 } from "lucide-react";
+import ReactECharts from "echarts-for-react";
+
 import { api, endpoints } from "@/lib/api";
 import type {
-  IngestHealthResponse,
   MarketSnapshotResponse,
+  SectorTrendsResponse,
+  EventsStreamResponse,
   StatsOverview,
-  SyncProgressResponse,
 } from "@/lib/types";
-import { fmtCap, fmtNum, fmtPct, fmtPctSigned } from "@/lib/format";
 import { zh } from "@/lib/i18n-zh";
-import { EmptyDataState } from "@/components/ui/EmptyDataState";
+import { fmtCap, fmtNum, fmtPctSigned } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { COLORS, echartsBase, signalColor } from "@/lib/theme";
 import { PageNarrative } from "@/components/ui/PageNarrative";
+import { Timeline } from "@/components/ui/Timeline";
+import type { TimelineEvent } from "@/components/ui/Timeline";
+import { Sparkline } from "@/components/ui/Sparkline";
 
-const TILES = [
+const NAV_TILES = [
   {
     to: "/global/market-pulse",
     title: zh.nav.marketPulse,
     desc: "板块结构、涨跌幅榜、行业强弱排序。",
-    icon: <LayoutDashboard className="text-accent" size={20} />,
+    icon: <BarChart3 className="text-accent" size={20} />,
+    color: "border-accent/20 bg-accent/5",
   },
   {
     to: "/global/macro",
     title: zh.nav.macro,
     desc: "宏观序列、利率与增长相关指标。",
     icon: <LineChart className="text-accent-2" size={20} />,
+    color: "border-accent-2/20 bg-accent-2/5",
   },
   {
     to: "/global/events",
     title: zh.nav.events,
     desc: "全市场事件：财报、公司行为、内幕等。",
     icon: <CalendarClock className="text-purple" size={20} />,
-  },
-  {
-    to: "/global/quality",
-    title: zh.nav.dataQuality,
-    desc: "各数据集在活跃标的上的同步覆盖。",
-    icon: <ShieldCheck className="text-up" size={20} />,
-  },
-  {
-    to: "/global/data-assets",
-    title: zh.nav.dataAssets,
-    desc: "全表清单、行数、是否已进界面、空表原因说明。",
-    icon: <Database className="text-cyan" size={20} />,
+    color: "border-purple/20 bg-purple/5",
   },
 ];
-
-const RETRY_SYNC_PATH: Record<string, string> = {
-  filings: "alpha/filings",
-  insider: "alpha/insider",
-  estimates: "alpha/estimates",
-  segments: "segments",
-  earnings: "events/earnings",
-  prices: "market/prices",
-};
-
-function retryCommandFor(datasetKey: string): string {
-  const path = RETRY_SYNC_PATH[datasetKey];
-  if (!path) return "";
-  return `curl -X POST "http://localhost:\${APP_WRITE_PORT:-8004}/api/v1/sync/${path}"`;
-}
 
 export function WelcomePage() {
   const { data: stats } = useQuery({
@@ -77,286 +62,212 @@ export function WelcomePage() {
     queryFn: () => api.get<StatsOverview>(endpoints.statsOverview()),
     staleTime: 60_000,
   });
-  const { data: sync } = useQuery({
-    queryKey: ["welcome-sync"],
-    queryFn: () => api.get<SyncProgressResponse>(endpoints.syncProgress()),
-    staleTime: 60_000,
-  });
-  const { data: market } = useQuery({
+
+  const {  market } = useQuery({
     queryKey: ["welcome-market"],
     queryFn: () => api.get<MarketSnapshotResponse>(endpoints.marketSnapshot(), { params: { limit: 5 } }),
     staleTime: 30_000,
   });
-  const { data: ingest } = useQuery({
-    queryKey: ["welcome-ingest-health"],
-    queryFn: () => api.get<IngestHealthResponse>(endpoints.ingestHealth()),
-    staleTime: 20_000,
+
+  const {  sectorTrends } = useQuery({
+    queryKey: ["welcome-sector-trends"],
+    queryFn: () => api.get<SectorTrendsResponse>(endpoints.sectorTrends()),
+    staleTime: 60_000,
   });
 
-  const active = sync?.active_symbols ?? 0;
-  const coreDone =
-    active > 0
-      ? ([
-          sync?.active_with_income_synced ?? 0,
-          sync?.active_with_balance_synced ?? 0,
-          sync?.active_with_cashflow_synced ?? 0,
-          sync?.active_with_prices_synced ?? 0,
-          sync?.active_with_earnings_synced ?? 0,
-        ].reduce((a, b) => a + b, 0) /
-          (active * 5))
-      : 0;
-  const freshnessLabel =
-    coreDone >= 0.95 && (ingest?.failed ?? 0) === 0
-      ? "新鲜"
-      : coreDone >= 0.8
-        ? "稳定"
-        : "补齐中";
-  const freshnessClass =
-    freshnessLabel === "新鲜"
-      ? "border-up/40 bg-up-soft text-up"
-      : freshnessLabel === "稳定"
-        ? "border-warn/40 bg-warn/10 text-warn"
-        : "border-down/40 bg-down-soft text-down";
-  const syncClosing = [
-    { key: "filings", done: sync?.active_with_filings_synced ?? 0 },
-    { key: "insider", done: sync?.active_with_insider_synced ?? 0 },
-    { key: "estimates", done: sync?.active_with_estimates_synced ?? 0 },
-    { key: "segments", done: sync?.active_with_segments_synced ?? 0 },
-    { key: "earnings", done: sync?.active_with_earnings_synced ?? 0 },
-    { key: "prices", done: sync?.active_with_prices_synced ?? 0 },
-  ]
-    .map((x) => {
-      const missing = Math.max(0, active - x.done);
-      const ratio = active > 0 ? x.done / active : 0;
-      return { ...x, missing, ratio };
-    })
-    .sort((a, b) => b.missing - a.missing);
-  const topSector = market?.sectors?.[0]?.sector ?? "—";
+  const {  events } = useQuery({
+    queryKey: ["welcome-events"],
+    queryFn: () => api.get<EventsStreamResponse>(endpoints.eventsStream(), { params: { limit: 20 } }),
+    staleTime: 60_000,
+  });
+
+  const gainers = market?.top_gainers ?? [];
+  const losers = market?.top_losers ?? [];
+  const sectors = market?.sectors ?? [];
+  const trends = sectorTrends?.trends ?? [];
+
+  // Market sentiment calculation
+  const positiveSectors = trends.filter((t) => (t.change_1d ?? 0) > 0).length;
+  const totalSectors = Math.max(trends.length, 1);
+  const sentimentRatio = positiveSectors / totalSectors;
+  const sentiment =
+    sentimentRatio >= 0.6 ? "风险偏好扩张" : sentimentRatio <= 0.4 ? "防御偏好抬升" : "震荡分化";
+  const sentimentColor =
+    sentimentRatio >= 0.6 ? "text-up" : sentimentRatio <= 0.4 ? "text-down" : "text-warn";
+
+  // Convert events to timeline format
+  const timelineEvents: TimelineEvent[] = [
+    ...(events?.earnings?.slice(0, 5).map((e, i) => ({
+      id: `earnings-${e.symbol}-${i}`,
+      date: e.date,
+      type: "earnings" as const,
+      title: `${e.symbol} 财报`,
+      description: e.company_name || undefined,
+      symbol: e.symbol,
+      value: e.eps_actual ? `EPS ${e.eps_actual.toFixed(2)}` : undefined,
+      change:
+        e.eps_estimated && e.eps_actual
+          ? ((e.eps_actual - e.eps_estimated) / Math.abs(e.eps_estimated)) * 100
+          : undefined,
+    })) ?? []),
+    ...(events?.insider?.slice(0, 5).map((ins, i) => ({
+      id: `insider-${ins.symbol}-${i}`,
+      date: ins.filing_date || ins.transaction_date || "",
+      type: "insider" as const,
+      title: `${ins.symbol} 内部人${ins.transaction_type?.toLowerCase().includes("buy") ? "买入" : "交易"}`,
+      description: ins.reporting_name || undefined,
+      symbol: ins.symbol,
+      value: ins.securities_transacted
+        ? `${fmtCap(ins.securities_transacted, 0)}股`
+        : undefined,
+    })) ?? []),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <div className="mx-auto max-w-5xl py-10">
-      <div className="mb-8">
+    <div className="mx-auto max-w-6xl py-6">
+      {/* Header */}
+      <div className="mb-6">
         <div className="flex items-center gap-2 text-text-secondary">
           <Sparkles size={14} className="text-accent-2" />
-          <span className="text-xs uppercase tracking-wider">
-            Chronos Finance
-          </span>
+          <span className="text-xs uppercase tracking-wider">Chronos Finance</span>
         </div>
-        <h1 className="mt-2 text-3xl font-semibold text-text-primary">
-          决策工作台：先看全局，再下钻个股
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-text-secondary">
-          用一条清晰动线把数据变成判断：宏观环境 → 市场风格 → 标的证据链。按{" "}
-          <kbd className="rounded bg-bg-3 px-1.5 py-0.5 font-mono text-2xs">
-            ⌘K
-          </kbd>{" "}
-          搜索标的，按{" "}
-          <kbd className="rounded bg-bg-3 px-1.5 py-0.5 font-mono text-2xs">
-            ⌘J
-          </kbd>{" "}
-          让 AI 辅助解释数据。
+        <h1 className="mt-2 text-2xl font-semibold text-text-primary">今日市场概览</h1>
+        <p className="mt-1 max-w-2xl text-sm text-text-secondary">
+          先看全局，再下钻个股。按 <kbd className="rounded bg-bg-3 px-1.5 py-0.5 font-mono text-2xs">⌘K</kbd>{" "}
+          搜索标的，按 <kbd className="rounded bg-bg-3 px-1.5 py-0.5 font-mono text-2xs">⌘J</kbd> 让 AI 辅助解释数据。
         </p>
       </div>
 
-      <div className="card mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
-        <StoryStep
-          step="01"
-          title="看全局环境"
-          desc="先看市场脉动和宏观，确认当前是风险偏好扩张还是收缩。"
-          to="/global/market-pulse"
-        />
-        <StoryStep
-          step="02"
-          title="锁定候选标的"
-          desc="根据强势行业、活跃成交与事件流，筛出待研究公司。"
-          to="/global/events"
-        />
-        <StoryStep
-          step="03"
-          title="构建证据链"
-          desc="进入个股页按“价格→财务→事件→预期→公告”顺序完成判断。"
-          to="/symbol/TMC/overview"
-        />
-      </div>
-
-      <div className="card mb-6 grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
-        <DataKpi
-          icon={<Database size={14} />}
+      {/* Market Status Cards */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <MarketStatusCard
+          icon={<Activity size={16} className="text-accent" />}
           label="活跃标的"
           value={fmtNum(stats?.universe.active, 0)}
           sub={`总计 ${fmtNum(stats?.universe.total, 0)}`}
           to="/global/quality"
         />
-        <DataKpi
-          icon={<Activity size={14} />}
-          label="核心表行数"
-          value={fmtCap(
-            (stats?.tables.daily_prices ?? 0) +
-              (stats?.tables.static_financials ?? 0) +
-              (stats?.tables.earnings_calendar ?? 0),
-            0,
-          )}
-          sub="行情 + 财务 + 财报"
-          to="/global/data-assets"
+        <MarketStatusCard
+          icon={<Zap size={16} className={sentimentColor} />}
+          label="市场情绪"
+          value={sentiment}
+          sub={`${positiveSectors}/${totalSectors} 板块上涨`}
         />
-        <DataKpi
-          icon={<ShieldCheck size={14} />}
-          label="核心覆盖率"
-          value={fmtPctSigned(coreDone, 1)}
-          sub={`公告覆盖 ${fmtNum(sync?.active_with_filings_synced, 0)}/${fmtNum(active, 0)}`}
-          to="/global/quality"
-        />
-        <DataKpi
-          icon={<TrendingUp size={14} />}
+        <MarketStatusCard
+          icon={<TrendingUp size={16} className="text-up" />}
           label="最强标的"
-          value={market?.top_gainers?.[0]?.symbol ?? "—"}
-          sub={fmtPctSigned(market?.top_gainers?.[0]?.change_pct, 2)}
-          to={market?.top_gainers?.[0]?.symbol ? `/symbol/${market.top_gainers[0].symbol}/overview` : undefined}
+          value={gainers[0]?.symbol ?? "—"}
+          sub={gainers[0]?.change_pct ? fmtPctSigned(gainers[0].change_pct, 2) : undefined}
+          to={gainers[0]?.symbol ? `/symbol/${gainers[0].symbol}/overview` : undefined}
+        />
+        <MarketStatusCard
+          icon={<TrendingDown size={16} className="text-down" />}
+          label="最弱标的"
+          value={losers[0]?.symbol ?? "—"}
+          sub={losers[0]?.change_pct ? fmtPctSigned(losers[0].change_pct, 2) : undefined}
+          to={losers[0]?.symbol ? `/symbol/${losers[0].symbol}/overview` : undefined}
         />
       </div>
 
-      <PageNarrative
-        title="市场简报"
-        description="把全局强弱转成动作：先确认强势方向，再检查同步新鲜度，最后决定是否进入个股证据链。"
-      />
-
-      <div className="card mb-6 p-4">
-        {market?.top_gainers?.[0]?.symbol ? (
-          <div className="text-sm text-text-secondary">
-            当前最强的是 <span className="ticker text-text-primary">{market.top_gainers[0].symbol}</span>{" "}
-            （{fmtPctSigned(market.top_gainers[0].change_pct, 2)}），主要走弱在{" "}
-            <span className="ticker text-text-primary">{market.top_losers?.[0]?.symbol ?? "—"}</span>.{" "}
-            板块广度第一为 <span className="text-text-primary">{topSector}</span>。
-          </div>
-        ) : (
-          <EmptyDataState
-            title="市场快照暂不可用"
-            detail="你仍可先看同步覆盖和数据资产，确认数据链路是否完整。"
-            actions={
-              <>
-                <Link to="/global/quality" className="chip">去同步覆盖</Link>
-                <Link to="/global/data-assets" className="chip">去数据资产</Link>
-              </>
-            }
-          />
-        )}
-        <div className="mt-2 text-2xs text-text-tertiary">
-          数据状态：{" "}
-          <span className={`rounded border px-1.5 py-0.5 font-medium uppercase ${freshnessClass}`}>
-            {freshnessLabel}
-          </span>{" "}
-          （覆盖率 {fmtPctSigned(coreDone, 1)}，队列运行 {fmtNum(ingest?.running, 0)}，失败{" "}
-          {fmtNum(ingest?.failed, 0)}）。
-        </div>
-      </div>
-
-      <div className="card mb-6 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="text-2xs uppercase tracking-wider text-text-tertiary">同步收口面板</div>
-          <div className="text-2xs text-text-tertiary">
-            剩余总缺口：{" "}
-            <span className="font-mono text-text-secondary">
-              {fmtNum(syncClosing.reduce((acc, x) => acc + x.missing, 0), 0)}
-            </span>
-          </div>
-        </div>
-        {active === 0 ? (
-          <EmptyDataState
-            title="当前无活跃标的，无法计算收口缺口"
-            detail="先检查股票池活跃状态，再执行缺口补跑。"
-            actions={
-              <>
-                <Link to="/global/quality" className="chip">检查覆盖状态</Link>
-                <Link to="/global/data-assets?table=stock_universe" className="chip">检查股票池</Link>
-              </>
-            }
-          />
-        ) : (
-        <div className="overflow-auto">
-          <table className="table-modern">
-            <thead>
-              <tr className="border-b border-border-soft text-left text-text-tertiary">
-                <th className="px-2 py-1.5">数据集</th>
-                <th className="px-2 py-1.5 text-right">完成</th>
-                <th className="px-2 py-1.5 text-right">缺口</th>
-                <th className="px-2 py-1.5 text-right">覆盖率</th>
-                <th className="px-2 py-1.5 text-right">动作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {syncClosing.map((row, i) => (
-                <tr key={row.key} className={i % 2 === 0 ? "bg-bg-2/30" : ""}>
-                  <td className="px-2 py-1.5">
-                    <span className="rounded bg-bg-3 px-1.5 py-0.5 font-mono text-2xs uppercase text-text-secondary">
-                      {row.key}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
-                    {fmtNum(row.done, 0)} / {fmtNum(active, 0)}
-                  </td>
-                  <td
-                    className={`px-2 py-1.5 text-right font-mono ${
-                      row.missing > 0 ? "text-warn" : "text-up"
-                    }`}
-                  >
-                    {fmtNum(row.missing, 0)}
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
-                    {fmtPct(row.ratio, 2)}
-                  </td>
-                  <td className="px-2 py-1.5 text-right">
-                    {row.missing > 0 ? (
-                      <button
-                        type="button"
-                        className="rounded border border-border-soft px-2 py-0.5 text-2xs text-text-secondary hover:bg-bg-2"
-                        onClick={() => {
-                          const cmd = retryCommandFor(row.key);
-                          if (!cmd) return;
-                          void navigator.clipboard.writeText(cmd);
-                        }}
-                        title="复制补跑命令"
-                      >
-                        复制补跑命令
-                      </button>
-                    ) : (
-                      <span className="text-2xs text-up">完成</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        )}
-        <div className="mt-2 text-2xs text-text-tertiary">
-          点击按钮会复制命令到剪贴板，粘贴到终端执行即可补跑。
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {TILES.map((t) => (
-          <Link
-            key={t.to}
-            to={t.to}
-            className="card card-hover flex items-start gap-3 p-4"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-bg-2">
-              {t.icon}
+      {/* Main Content Grid */}
+      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Sector Treemap */}
+        <div className="card p-3 lg:col-span-2">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              板块热力图
             </div>
-            <div className="flex-1">
-              <div className="font-medium text-text-primary">{t.title}</div>
-              <div className="mt-0.5 text-xs text-text-secondary">
-                {t.desc}
+            <Link to="/global/market-pulse" className="flex items-center gap-1 text-2xs text-accent hover:underline">
+              查看全部 <ArrowRight size={12} />
+            </Link>
+          </div>
+          <SectorTreemap sectors={sectors} />
+        </div>
+
+        {/* Event Timeline */}
+        <div className="card p-3">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              今日事件
+            </div>
+            <Link to="/global/events" className="flex items-center gap-1 text-2xs text-accent hover:underline">
+              查看全部 <ArrowRight size={12} />
+            </Link>
+          </div>
+          <Timeline events={timelineEvents.slice(0, 6)} />
+        </div>
+      </div>
+
+      {/* Movers & Navigation */}
+      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Gainers */}
+        <div className="card p-3">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-up">
+            <TrendingUp size={16} />
+            <span>涨幅榜</span>
+          </div>
+          <MoversList items={gainers.slice(0, 5)} />
+        </div>
+
+        {/* Losers */}
+        <div className="card p-3">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-down">
+            <TrendingDown size={16} />
+            <span>跌幅榜</span>
+          </div>
+          <MoversList items={losers.slice(0, 5)} />
+        </div>
+
+        {/* Quick Navigation */}
+        <div className="space-y-3">
+          {NAV_TILES.map((tile) => (
+            <Link
+              key={tile.to}
+              to={tile.to}
+              className={cn(
+                "flex items-start gap-3 rounded-lg border p-3 transition-all hover:shadow-md",
+                tile.color
+              )}
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-bg-2">
+                {tile.icon}
               </div>
-            </div>
-          </Link>
-        ))}
+              <div className="flex-1">
+                <div className="flex items-center gap-1 font-medium text-text-primary">
+                  {tile.title}
+                  <ArrowRight size={14} className="text-text-tertiary" />
+                </div>
+                <div className="mt-0.5 text-xs text-text-secondary">{tile.desc}</div>
+              </div>
+            </Link>
+          ))}
+        </div>
       </div>
+
+      {/* User Journey Guide */}
+      <PageNarrative
+        title="投资决策动线"
+        description="按以下顺序使用系统，从全局到个股建立完整判断。"
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Link to="/global/market-pulse" className="chip border-accent/40 bg-accent/10 text-accent">
+              ① 看板块强弱
+            </Link>
+            <Link to="/global/macro" className="chip border-accent-2/40 bg-accent-2/10 text-accent-2">
+              ② 确认宏观环境
+            </Link>
+            <Link to="/global/events" className="chip border-purple/40 bg-purple/10 text-purple">
+              ③ 发现事件驱动
+            </Link>
+            <span className="chip">④ 进入个股证据链</span>
+          </div>
+        }
+      />
     </div>
   );
 }
 
-function DataKpi({
+function MarketStatusCard({
   icon,
   label,
   value,
@@ -369,41 +280,118 @@ function DataKpi({
   sub?: string;
   to?: string;
 }) {
-  const body = (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1.5 text-2xs text-text-tertiary">
+  const content = (
+    <div className="flex items-start gap-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-bg-2">
         {icon}
-        <span>{label}</span>
       </div>
-      <div className="kpi-num">{value}</div>
-      {sub ? <div className="text-2xs text-text-secondary">{sub}</div> : null}
+      <div className="min-w-0 flex-1">
+        <div className="text-2xs text-text-tertiary">{label}</div>
+        <div className="truncate text-sm font-medium text-text-primary">{value}</div>
+        {sub && <div className="text-2xs text-text-secondary">{sub}</div>}
+      </div>
     </div>
   );
 
-  if (!to) return body;
+  if (to) {
+    return (
+      <Link to={to} className="card card-hover block p-3">
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className="card p-3">{content}</div>;
+}
+
+function MoversList({ items }: { items: MarketSnapshotResponse["top_gainers"] }) {
+  if (items.length === 0) {
+    return <div className="py-4 text-center text-xs text-text-tertiary">暂无数据</div>;
+  }
+
   return (
-    <Link to={to} className="rounded-md px-1 py-0.5 transition-colors hover:bg-bg-2" title="点击下钻">
-      {body}
-    </Link>
+    <div className="space-y-2">
+      {items.map((item) => (
+        <Link
+          key={item.symbol}
+          to={`/symbol/${item.symbol}/overview`}
+          className="flex items-center justify-between rounded-md border border-border-soft bg-bg-2/50 px-3 py-2 transition-colors hover:bg-bg-3"
+        >
+          <div>
+            <span className="ticker text-sm text-text-primary">{item.symbol}</span>
+            <div className="text-2xs text-text-secondary">{item.company_name}</div>
+          </div>
+          <div className="text-right">
+            <div className="font-mono text-sm" style={{ color: signalColor(item.change_pct ?? null) }}>
+              {fmtPctSigned(item.change_pct, 2)}
+            </div>
+            <div className="font-mono text-2xs text-text-tertiary">{fmtNum(item.close, 2)}</div>
+          </div>
+        </Link>
+      ))}
+    </div>
   );
 }
 
-function StoryStep({
-  step,
-  title,
-  desc,
-  to,
+function SectorTreemap({
+  sectors,
 }: {
-  step: string;
-  title: string;
-  desc: string;
-  to: string;
+  sectors: MarketSnapshotResponse["sectors"];
 }) {
-  return (
-    <Link to={to} className="rounded-md border border-border-soft bg-bg-2 p-3 hover:bg-bg-3">
-      <div className="mb-1 font-mono text-2xs text-accent">{step}</div>
-      <div className="text-sm font-medium text-text-primary">{title}</div>
-      <div className="mt-1 text-xs text-text-secondary">{desc}</div>
-    </Link>
-  );
+  const data = sectors
+    .map((s) => ({ name: s.sector, value: s.symbols, move: s.avg_change_pct ?? 0 }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 15);
+
+  if (data.length === 0) {
+    return <div className="h-[200px] flex items-center justify-center text-xs text-text-tertiary">暂无板块数据</div>;
+  }
+
+  const option = {
+    ...echartsBase,
+    tooltip: {
+      formatter: (params: { name: string; value: number }) => {
+        const row = sectors.find((s) => s.sector === params.name);
+        return `<b>${params.name}</b><br/>标的数：${params.value}<br/>平均涨跌：${fmtPctSigned(row?.avg_change_pct, 2)}`;
+      },
+    },
+    series: [
+      {
+        type: "treemap",
+         data.map((d) => {
+          const move = d.move ?? 0;
+          const alpha = Math.min(Math.abs(move) * 0.1 + 0.15, 0.4);
+          const color =
+            move > 0 ? `rgba(38,166,154,${alpha})` : move < 0 ? `rgba(239,83,80,${alpha})` : `rgba(41,98,255,0.15)`;
+          return {
+            name: d.name,
+            value: d.value,
+            itemStyle: {
+              color,
+              borderColor: COLORS.borderSoft,
+              borderWidth: 1,
+            },
+          };
+        }),
+        width: "100%",
+        height: "100%",
+        roam: false,
+        nodeClick: false,
+        breadcrumb: { show: false },
+        label: {
+          show: true,
+          formatter: (p: { name: string; data: { value: number } }) => `${p.name}\n${p.data.value}只`,
+          fontSize: 10,
+          color: COLORS.text0,
+        },
+        itemStyle: {
+          borderColor: COLORS.borderSoft,
+          borderWidth: 1,
+          gapWidth: 2,
+        },
+      },
+    ],
+  };
+
+  return <ReactECharts option={option} style={{ height: 200 }} />;
 }

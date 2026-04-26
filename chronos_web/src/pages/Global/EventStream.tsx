@@ -1,273 +1,305 @@
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Users } from "lucide-react";
-import { useState } from "react";
+import { Calendar, Users, FileText, Filter, TrendingUp, DollarSign, Scissors, Building2 } from "lucide-react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { api, endpoints } from "@/lib/api";
-import type { EventsStreamResponse } from "@/lib/types";
+import type { EventsStreamResponse, DividendHistoryResponse, SplitHistoryResponse } from "@/lib/types";
 import { fmtDay, fmtCap, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { COLORS } from "@/lib/theme";
 import { EmptyDataState } from "@/components/ui/EmptyDataState";
 import { PageNarrative } from "@/components/ui/PageNarrative";
+import { Timeline, type TimelineEvent } from "@/components/ui/Timeline";
+import { CalendarHeatmap } from "@/components/charts/CalendarHeatmap";
+
+type EventFilter = "all" | "earnings" | "insider" | "dividend" | "split" | "sec";
+
+const EVENT_TYPES: Array<{ key: EventFilter; label: string; icon: React.ReactNode; color: string }> = [
+  { key: "all", label: "全部", icon: <Filter size={14} />, color: "text-text-secondary" },
+  { key: "earnings", label: "财报", icon: <TrendingUp size={14} />, color: "text-accent" },
+  { key: "insider", label: "内部人", icon: <Users size={14} />, color: "text-pink" },
+  { key: "dividend", label: "分红", icon: <DollarSign size={14} />, color: "text-up" },
+  { key: "split", label: "拆股", icon: <Scissors size={14} />, color: "text-warn" },
+  { key: "sec", label: "SEC", icon: <FileText size={14} />, color: "text-text-secondary" },
+];
 
 export function EventStreamPage() {
-  const [open, setOpen] = useState({
-    earnings: true,
-    insider: true,
-    sec: true,
-  });
-  const { data, isLoading } = useQuery({
+  const [filter, setFilter] = useState<EventFilter>("all");
+  const [symbolFilter, setSymbolFilter] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const {  data, isLoading } = useQuery({
     queryKey: ["events-stream"],
-    queryFn: () => api.get<EventsStreamResponse>(endpoints.eventsStream(), { params: { limit: 40 } }),
+    queryFn: () => api.get<EventsStreamResponse>(endpoints.eventsStream(), { params: { limit: 100 } }),
     staleTime: 60_000,
   });
 
   const earnings = data?.earnings ?? [];
   const insiderTrades = data?.insider ?? [];
   const secFilings = data?.sec_filings ?? [];
-  const [symbolFilter, setSymbolFilter] = useState<string>("");
-  const earningsFiltered = symbolFilter ? earnings.filter((e) => e.symbol === symbolFilter) : earnings;
-  const insiderFiltered = symbolFilter ? insiderTrades.filter((i) => i.symbol === symbolFilter) : insiderTrades;
-  const secFiltered = symbolFilter ? secFilings.filter((s) => s.symbol === symbolFilter) : secFilings;
+
+  // Prepare calendar data
+  const calendarData = useMemo(() => {
+    const dateMap = new Map<string, number>();
+
+    earnings.forEach((e) => {
+      dateMap.set(e.date, (dateMap.get(e.date) || 0) + 1);
+    });
+    insiderTrades.forEach((i) => {
+      const date = i.filing_date || i.transaction_date;
+      if (date) {
+        dateMap.set(date, (dateMap.get(date) || 0) + 1);
+      }
+    });
+    secFilings.forEach((s) => {
+      if (s.filing_date) {
+        dateMap.set(s.filing_date, (dateMap.get(s.filing_date) || 0) + 1);
+      }
+    });
+
+    return Array.from(dateMap.entries()).map(([date, value]) => ({ date, value }));
+  }, [earnings, insiderTrades, secFilings]);
+
+  // Filter events
+  const filteredEarnings = useMemo(() => {
+    if (filter !== "all" && filter !== "earnings") return [];
+    if (!symbolFilter) return earnings;
+    return earnings.filter((e) => e.symbol === symbolFilter);
+  }, [earnings, filter, symbolFilter]);
+
+  const filteredInsider = useMemo(() => {
+    if (filter !== "all" && filter !== "insider") return [];
+    if (!symbolFilter) return insiderTrades;
+    return insiderTrades.filter((i) => i.symbol === symbolFilter);
+  }, [insiderTrades, filter, symbolFilter]);
+
+  const filteredSec = useMemo(() => {
+    if (filter !== "all" && filter !== "sec") return [];
+    if (!symbolFilter) return secFilings;
+    return secFilings.filter((s) => s.symbol === symbolFilter);
+  }, [secFilings, filter, symbolFilter]);
+
+  // Convert to timeline events
+  const timelineEvents: TimelineEvent[] = useMemo(() => {
+    const events: TimelineEvent[] = [];
+
+    filteredEarnings.forEach((e, i) => {
+      const surprise =
+        e.eps_estimated && e.eps_actual
+          ? ((e.eps_actual - e.eps_estimated) / Math.abs(e.eps_estimated)) * 100
+          : null;
+
+      events.push({
+        id: `earnings-${e.symbol}-${i}`,
+        date: e.date,
+        type: "earnings",
+        title: `${e.symbol} 财报`,
+        description: e.company_name,
+        symbol: e.symbol,
+        value: e.eps_actual ? `EPS ${e.eps_actual.toFixed(2)}` : undefined,
+        change: surprise ?? undefined,
+      });
+    });
+
+    filteredInsider.forEach((ins, i) => {
+      const isBuy = ins.transaction_type?.toLowerCase().includes("buy");
+      events.push({
+        id: `insider-${ins.symbol}-${i}`,
+        date: ins.filing_date || ins.transaction_date || "",
+        type: "insider",
+        title: `${ins.symbol} 内部人${isBuy ? "买入" : "交易"}`,
+        description: ins.reporting_name || undefined,
+        symbol: ins.symbol,
+        value: ins.securities_transacted ? `${fmtCap(ins.securities_transacted, 0)}股` : undefined,
+      });
+    });
+
+    filteredSec.forEach((s, i) => {
+      events.push({
+        id: `sec-${s.symbol}-${i}`,
+        date: s.filing_date || "",
+        type: "sec",
+        title: `${s.symbol} ${s.form_type}`,
+        description: s.company_name,
+        symbol: s.symbol,
+        value: s.fiscal_year ? `FY${s.fiscal_year}` : undefined,
+      });
+    });
+
+    // Filter by selected date
+    if (selectedDate) {
+      return events.filter((e) => e.date === selectedDate);
+    }
+
+    return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [filteredEarnings, filteredInsider, filteredSec, selectedDate]);
+
+  // Stats
+  const stats = {
+    total: earnings.length + insiderTrades.length + secFilings.length,
+    earnings: earnings.length,
+    insider: insiderTrades.length,
+    sec: secFilings.length,
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <PageNarrative
-        title="全局事件叙事"
-        description="先看财报超预期扩散，再看内部人交易方向，最后核验 SEC 披露密度，判断主题是加速还是退潮。"
+        title="事件雷达"
+        description="发现事件驱动交易机会：财报超预期、内部人交易、分红拆股、SEC申报。"
       />
 
-      <div className="card grid grid-cols-3 gap-3 p-3 text-center">
-        <div>
-          <div className="text-2xs text-text-tertiary">财报项</div>
-          <div className="kpi-num">{earnings.length}</div>
-        </div>
-        <div>
-          <div className="text-2xs text-text-tertiary">内部人项</div>
-          <div className="kpi-num">{insiderTrades.length}</div>
-        </div>
-        <div>
-          <div className="text-2xs text-text-tertiary">SEC 项</div>
-          <div className="kpi-num">{secFilings.length}</div>
-        </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="总事件" value={stats.total} color="text-text-primary" />
+        <StatCard label="财报" value={stats.earnings} color="text-accent" />
+        <StatCard label="内部人" value={stats.insider} color="text-pink" />
+        <StatCard label="SEC申报" value={stats.sec} color="text-text-secondary" />
       </div>
 
+      {/* Calendar Heatmap */}
       <div className="card p-3">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">事件下钻筛选</div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+            <Calendar size={14} />
+            <span>事件日历</span>
+          </div>
+          {selectedDate && (
+            <button
+              type="button"
+              onClick={() => setSelectedDate(null)}
+              className="text-2xs text-accent hover:underline"
+            >
+              显示全部
+            </button>
+          )}
+        </div>
+        <CalendarHeatmap data={calendarData} height={160} />
+        {selectedDate && (
+          <div className="mt-2 text-center text-sm text-text-secondary">
+            已选择: <span className="font-mono text-text-primary">{selectedDate}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div className="card p-3">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          事件筛选
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {EVENT_TYPES.map((type) => (
+            <button
+              key={type.key}
+              type="button"
+              onClick={() => setFilter(type.key)}
+              className={cn(
+                "chip flex items-center gap-1.5",
+                filter === type.key ? "border-accent/40 bg-accent/10 text-accent" : ""
+              )}
+            >
+              <span className={type.color}>{type.icon}</span>
+              <span>{type.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Symbol Filter */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-2xs text-text-tertiary">标的筛选:</span>
           {symbolFilter ? (
             <button
               type="button"
               onClick={() => setSymbolFilter("")}
               className="chip border-accent/40 bg-accent/10 text-accent"
             >
-              当前标的：{symbolFilter}（清除）
+              {symbolFilter} ✕
             </button>
           ) : (
-            <span className="chip">未选标的（展示全市场）</span>
+            <>
+              {Array.from(new Set([...earnings, ...insiderTrades, ...secFilings].map((x) => x.symbol)))
+                .filter(Boolean)
+                .slice(0, 10)
+                .map((sym) => (
+                  <button key={sym} type="button" className="chip" onClick={() => setSymbolFilter(sym)}>
+                    {sym}
+                  </button>
+                ))}
+            </>
           )}
-          {[...earnings, ...insiderTrades, ...secFilings]
-            .map((x) => x.symbol)
-            .filter((s, i, arr) => !!s && arr.indexOf(s) === i)
-            .slice(0, 12)
-            .map((sym) => (
-              <button key={sym} type="button" className="chip" onClick={() => setSymbolFilter(sym)}>
-                {sym}
-              </button>
-            ))}
         </div>
       </div>
 
-      {/* Recent earnings */}
+      {/* Event Timeline */}
       <div className="card p-3">
-        <button
-          type="button"
-          className="mb-3 flex w-full items-center justify-between text-sm font-medium text-text-primary"
-          onClick={() => setOpen((s) => ({ ...s, earnings: !s.earnings }))}
-        >
-          <span className="flex items-center gap-2">
-            <Calendar size={16} />
-            <span>近期财报</span>
-          </span>
-          <span className="text-xs text-text-tertiary">{open.earnings ? "收起" : "展开"}</span>
-        </button>
-        {!open.earnings ? null : isLoading ? (
-          <div className="py-4 text-center text-xs text-text-tertiary">加载中…</div>
-        ) : earningsFiltered.length === 0 ? (
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+            事件时间轴
+            {selectedDate && (
+              <span className="ml-2 normal-case text-text-secondary">({selectedDate})</span>
+            )}
+          </div>
+          <span className="text-2xs text-text-tertiary">{timelineEvents.length} 条事件</span>
+        </div>
+
+        {isLoading ? (
+          <div className="py-8 text-center text-sm text-text-tertiary">加载中...</div>
+        ) : timelineEvents.length === 0 ? (
           <EmptyDataState
-            title="当前筛选下暂无财报数据"
-            detail="可清除标的筛选，或到个股事件页查看更完整时间序列。"
+            title="当前筛选下无事件"
+            detail="尝试切换筛选条件或清除标的筛选。"
             actions={
               <>
-                <button type="button" className="chip" onClick={() => setSymbolFilter("")}>清除筛选</button>
-                <Link to="/global/data-assets?table=earnings_calendar" className="chip">查看财报覆盖</Link>
+                <button type="button" className="chip" onClick={() => setFilter("all")}>
+                  全部事件
+                </button>
+                <button type="button" className="chip" onClick={() => setSymbolFilter("")}>
+                  清除标的
+                </button>
               </>
             }
           />
         ) : (
-          <table className="table-modern">
-            <thead>
-              <tr className="border-b border-border-soft text-left text-text-tertiary">
-                <th className="px-2 py-1.5">代码</th>
-                <th className="px-2 py-1.5">日期</th>
-                <th className="px-2 py-1.5 text-right">EPS 预期</th>
-                <th className="px-2 py-1.5 text-right">EPS 实际</th>
-                <th className="px-2 py-1.5 text-right">超预期</th>
-              </tr>
-            </thead>
-            <tbody>
-              {earningsFiltered.map((e, i) => {
-                const surprise = e.eps_estimated && e.eps_actual
-                  ? ((e.eps_actual - e.eps_estimated) / Math.abs(e.eps_estimated)) * 100
-                  : null;
-                return (
-                  <tr
-                    key={`${e.symbol}-${e.date}-${i}`}
-                    className={cn("border-b border-border-soft/50 hover:bg-bg-2/60", i % 2 === 0 ? "bg-bg-2/30" : "")}
-                  >
-                    <td className="px-2 py-1.5">
-                      <a href={`/symbol/${e.symbol}/events`} className="ticker text-text-primary hover:text-accent">
-                        {e.symbol}
-                      </a>
-                    </td>
-                    <td className="px-2 py-1.5 font-mono text-text-secondary">{fmtDay(e.date)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-text-secondary">{fmtNum(e.eps_estimated, 2)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-text-primary">{fmtNum(e.eps_actual, 2)}</td>
-                    <td className={cn("px-2 py-1.5 text-right font-mono", surprise !== null && surprise >= 0 ? "text-up" : "text-down")}>
-                      {surprise !== null ? `${surprise >= 0 ? "+" : ""}${surprise.toFixed(1)}%` : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <Timeline
+             timelineEvents.slice(0, 20)}
+            onEventClick={(event) => {
+              if (event.symbol) {
+                setSymbolFilter(event.symbol);
+              }
+            }}
+          />
         )}
       </div>
 
-      {/* Recent insider trades */}
-      <div className="card p-3">
-        <button
-          type="button"
-          className="mb-3 flex w-full items-center justify-between text-sm font-medium text-text-primary"
-          onClick={() => setOpen((s) => ({ ...s, insider: !s.insider }))}
-        >
-          <span className="flex items-center gap-2">
-            <Users size={16} />
-            <span>近期内部人交易</span>
-          </span>
-          <span className="text-xs text-text-tertiary">{open.insider ? "收起" : "展开"}</span>
-        </button>
-        {!open.insider ? null : isLoading ? (
-          <div className="py-4 text-center text-xs text-text-tertiary">加载中…</div>
-        ) : insiderFiltered.length === 0 ? (
-          <EmptyDataState
-            title="当前筛选下暂无内部人数据"
-            detail="可切换其它标的或查看全市场内部人交易。"
-            actions={
-              <>
-                <button type="button" className="chip" onClick={() => setSymbolFilter("")}>清除筛选</button>
-                <Link to="/global/data-assets?table=insider_trades" className="chip">查看内部人覆盖</Link>
-              </>
-            }
-          />
-        ) : (
-          <table className="table-modern">
-            <thead>
-              <tr className="border-b border-border-soft text-left text-text-tertiary">
-                <th className="px-2 py-1.5">代码</th>
-                <th className="px-2 py-1.5">日期</th>
-                <th className="px-2 py-1.5">主体</th>
-                <th className="px-2 py-1.5">类型</th>
-                <th className="px-2 py-1.5 text-right">股数</th>
-              </tr>
-            </thead>
-            <tbody>
-              {insiderFiltered.map((ins, i) => (
-                <tr key={`${ins.symbol}-${ins.filing_date}-${i}`} className={cn("border-b border-border-soft/50 hover:bg-bg-2/60", i % 2 === 0 ? "bg-bg-2/30" : "")}>
-                  <td className="px-2 py-1.5">
-                    <a href={`/symbol/${ins.symbol}/events`} className="ticker text-text-primary hover:text-accent">
-                      {ins.symbol}
-                    </a>
-                  </td>
-                  <td className="px-2 py-1.5 font-mono text-text-secondary">{fmtDay(ins.filing_date)}</td>
-                  <td className="max-w-[150px] truncate px-2 py-1.5 text-text-secondary">
-                    {ins.reporting_name ?? "—"}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <span className={cn(
-                      "rounded px-1 py-0.5 text-2xs",
-                      ins.transaction_type?.toLowerCase().includes("buy") ? "bg-up-soft text-up" :
-                      ins.transaction_type?.toLowerCase().includes("sell") ? "bg-down-soft text-down" :
-                      "bg-bg-3 text-text-secondary"
-                    )}>
-                      {ins.transaction_type ?? "—"}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
-                    {fmtCap(ins.securities_transacted, 0)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      {/* Quick Links */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Link to="/global/data-assets?table=earnings_calendar" className="card card-hover p-3 text-center">
+          <TrendingUp size={20} className="mx-auto mb-1 text-accent" />
+          <div className="text-xs text-text-secondary">财报覆盖</div>
+        </Link>
+        <Link to="/global/data-assets?table=insider_trades" className="card card-hover p-3 text-center">
+          <Users size={20} className="mx-auto mb-1 text-pink" />
+          <div className="text-xs text-text-secondary">内部人覆盖</div>
+        </Link>
+        <Link to="/global/data-assets?table=dividend_calendar" className="card card-hover p-3 text-center">
+          <DollarSign size={20} className="mx-auto mb-1 text-up" />
+          <div className="text-xs text-text-secondary">分红数据</div>
+        </Link>
+        <Link to="/global/data-assets?table=sec_files" className="card card-hover p-3 text-center">
+          <Building2 size={20} className="mx-auto mb-1 text-text-secondary" />
+          <div className="text-xs text-text-secondary">SEC覆盖</div>
+        </Link>
       </div>
+    </div>
+  );
+}
 
-      <div className="card p-3">
-        <button
-          type="button"
-          className="mb-3 flex w-full items-center justify-between text-sm font-medium text-text-primary"
-          onClick={() => setOpen((s) => ({ ...s, sec: !s.sec }))}
-        >
-          <span className="flex items-center gap-2">
-            <Calendar size={16} />
-            <span>近期 SEC 申报</span>
-          </span>
-          <span className="text-xs text-text-tertiary">{open.sec ? "收起" : "展开"}</span>
-        </button>
-        {!open.sec ? null : isLoading ? (
-          <div className="py-4 text-center text-xs text-text-tertiary">加载中…</div>
-        ) : secFiltered.length === 0 ? (
-          <EmptyDataState
-            title="当前筛选下暂无 SEC 数据"
-            detail="可先清除筛选，或去 SEC 覆盖页确认数据同步状态。"
-            actions={
-              <>
-                <button type="button" className="chip" onClick={() => setSymbolFilter("")}>清除筛选</button>
-                <Link to="/global/data-assets?table=sec_files" className="chip">查看 SEC 覆盖</Link>
-              </>
-            }
-          />
-        ) : (
-          <table className="table-modern">
-            <thead>
-              <tr className="border-b border-border-soft text-left text-text-tertiary">
-                <th className="px-2 py-1.5">代码</th>
-                <th className="px-2 py-1.5">表单</th>
-                <th className="px-2 py-1.5">申报日期</th>
-                <th className="px-2 py-1.5 text-right">财年</th>
-              </tr>
-            </thead>
-            <tbody>
-              {secFiltered.slice(0, 20).map((s, i) => (
-                <tr
-                  key={`${s.symbol}-${s.form_type}-${s.filing_date}-${i}`}
-                  className={cn("border-b border-border-soft/50 hover:bg-bg-2/60", i % 2 === 0 ? "bg-bg-2/30" : "")}
-                >
-                  <td className="px-2 py-1.5">
-                    <a href={`/symbol/${s.symbol}/sec`} className="ticker text-text-primary hover:text-accent">
-                      {s.symbol}
-                    </a>
-                  </td>
-                  <td className="px-2 py-1.5 text-text-secondary">{s.form_type}</td>
-                  <td className="px-2 py-1.5 font-mono text-text-secondary">{fmtDay(s.filing_date)}</td>
-                  <td className="px-2 py-1.5 text-right font-mono text-text-secondary">{s.fiscal_year ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="card p-3 text-center">
+      <div className="text-2xs text-text-tertiary">{label}</div>
+      <div className={cn("mt-1 text-2xl font-semibold", color)}>{value}</div>
     </div>
   );
 }

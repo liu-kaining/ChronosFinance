@@ -8,25 +8,41 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.core.database import async_session_factory
 from app.models.alpha import AnalystEstimate, InsiderTrade, SECFile
-from app.models.market import CorporateAction, DailyPrice, EarningsCalendar
+from app.models.market import (
+    CorporateAction,
+    DailyPrice,
+    DividendCalendarGlobal,
+    EarningsCalendar,
+    SplitCalendarGlobal,
+)
+from app.models.market_cap import DailyMarketCap
 from app.models.static_financials import StaticFinancials
+from app.models.valuation import ValuationDCF
 from app.schemas.library import (
     AnalystEstimateRow,
     AnalystEstimatesResponse,
     CorporateActionRow,
     CorporateActionsResponse,
+    DividendHistoryResponse,
+    DividendItem,
     EarningsRow,
     EarningsSeriesResponse,
     InsiderRow,
     InsiderSeriesResponse,
+    MarketCapHistoryResponse,
+    MarketCapItem,
     PriceBar,
     PricesSeriesResponse,
     SecFilingMeta,
     SecFilingsListResponse,
+    SplitHistoryResponse,
+    SplitItem,
     StaticCategoriesResponse,
     StaticCategoryInfo,
     StaticRow,
     StaticSeriesResponse,
+    ValuationHistoryItem,
+    ValuationResponse,
 )
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
@@ -320,3 +336,157 @@ async def library_sec_filings(
             )
         )
     return SecFilingsListResponse(symbol=sym, rows=len(out), items=out)
+
+
+# =============================================================================
+# Phase 1: New endpoints to expose dormant data tables
+# =============================================================================
+
+
+@router.get(
+    "/symbols/{symbol}/market-cap-history",
+    response_model=MarketCapHistoryResponse,
+    summary="Historical market cap values (exposes daily_market_cap table)",
+)
+async def library_market_cap_history(
+    symbol: str,
+    limit: int = Query(1000, ge=1, le=5000),
+) -> MarketCapHistoryResponse:
+    sym = _sym(symbol)
+    async with async_session_factory() as session:
+        stmt = (
+            select(DailyMarketCap)
+            .where(DailyMarketCap.symbol == sym)
+            .order_by(DailyMarketCap.date.asc())
+            .limit(limit)
+        )
+        rows = (await session.scalars(stmt)).all()
+
+    items = [
+        MarketCapItem(
+            date=r.date,
+            market_cap=r.market_cap,
+        )
+        for r in rows
+    ]
+    return MarketCapHistoryResponse(symbol=sym, rows=len(items), items=items)
+
+
+@router.get(
+    "/symbols/{symbol}/valuation",
+    response_model=ValuationResponse,
+    summary="DCF valuation history vs stock price (exposes valuation_dcf table)",
+)
+async def library_valuation(
+    symbol: str,
+    limit: int = Query(1000, ge=1, le=5000),
+) -> ValuationResponse:
+    sym = _sym(symbol)
+    async with async_session_factory() as session:
+        stmt = (
+            select(ValuationDCF)
+            .where(ValuationDCF.symbol == sym)
+            .order_by(ValuationDCF.date.asc())
+            .limit(limit)
+        )
+        rows = (await session.scalars(stmt)).all()
+
+    items = [
+        ValuationHistoryItem(
+            date=r.date,
+            dcf=r.dcf,
+            stock_price=r.stock_price,
+        )
+        for r in rows
+    ]
+
+    latest_dcf = None
+    latest_price = None
+    upside_pct = None
+    if items:
+        latest = items[-1]
+        latest_dcf = latest.dcf
+        latest_price = latest.stock_price
+        if latest_dcf is not None and latest_price is not None and latest_price != 0:
+            upside_pct = (latest_dcf - latest_price) / latest_price * 100
+
+    return ValuationResponse(
+        symbol=sym,
+        latest_dcf=latest_dcf,
+        latest_price=latest_price,
+        upside_pct=upside_pct,
+        rows=len(items),
+        items=items,
+    )
+
+
+@router.get(
+    "/symbols/{symbol}/dividends",
+    response_model=DividendHistoryResponse,
+    summary="Dividend history (exposes dividend_calendar_global table)",
+)
+async def library_dividends(
+    symbol: str,
+    limit: int = Query(500, ge=1, le=5000),
+) -> DividendHistoryResponse:
+    sym = _sym(symbol)
+    async with async_session_factory() as session:
+        stmt = (
+            select(DividendCalendarGlobal)
+            .where(DividendCalendarGlobal.symbol == sym)
+            .order_by(DividendCalendarGlobal.date.desc())
+            .limit(limit)
+        )
+        rows = (await session.scalars(stmt)).all()
+
+    items = [
+        DividendItem(
+            date=r.date,
+            dividend=r.dividend,
+            adjusted_dividend=r.adjusted_dividend,
+            record_date=r.record_date,
+            payment_date=r.payment_date,
+            declaration_date=r.declaration_date,
+        )
+        for r in rows
+    ]
+    # Keep date DESC (newest first)
+    return DividendHistoryResponse(symbol=sym, rows=len(items), items=items)
+
+
+@router.get(
+    "/symbols/{symbol}/splits",
+    response_model=SplitHistoryResponse,
+    summary="Stock split history (exposes split_calendar_global table)",
+)
+async def library_splits(
+    symbol: str,
+    limit: int = Query(100, ge=1, le=1000),
+) -> SplitHistoryResponse:
+    sym = _sym(symbol)
+    async with async_session_factory() as session:
+        stmt = (
+            select(SplitCalendarGlobal)
+            .where(SplitCalendarGlobal.symbol == sym)
+            .order_by(SplitCalendarGlobal.date.desc())
+            .limit(limit)
+        )
+        rows = (await session.scalars(stmt)).all()
+
+    def format_ratio(numerator: float | None, denominator: float | None) -> str | None:
+        if numerator is None or denominator is None or denominator == 0:
+            return None
+        if numerator > denominator:
+            return f"{int(numerator)}:{int(denominator)}"
+        return f"{int(numerator)}:{int(denominator)}"
+
+    items = [
+        SplitItem(
+            date=r.date,
+            numerator=r.numerator,
+            denominator=r.denominator,
+            ratio_str=format_ratio(r.numerator, r.denominator),
+        )
+        for r in rows
+    ]
+    return SplitHistoryResponse(symbol=sym, rows=len(items), items=items)

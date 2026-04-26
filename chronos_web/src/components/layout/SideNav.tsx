@@ -6,6 +6,8 @@ import {
   ShieldCheck,
   Compass,
   Layers,
+  Bookmark,
+  PieChart,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -21,6 +23,7 @@ interface NavItem {
 
 const PRIMARY: NavItem[] = [
   { to: "/", label: zh.nav.home, icon: <Compass size={16} />, end: true },
+  { to: "/watchlist", label: "我的自选", icon: <Bookmark size={16} /> },
 ];
 
 const GLOBAL: NavItem[] = [

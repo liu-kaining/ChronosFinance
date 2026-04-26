@@ -10,6 +10,7 @@ from app.core.database import async_session_factory
 from app.models.alpha import AnalystEstimate, InsiderTrade, SECFile
 from app.models.macro import MacroEconomic
 from app.models.market import CorporateAction, DailyPrice, EarningsCalendar
+from app.models.sector import SectorPerformanceSeries
 from app.models.static_financials import StaticFinancials
 from app.models.stock_universe import StockUniverse
 from app.models.sync_control import SyncRun
@@ -30,12 +31,19 @@ from app.schemas.insight import (
     MoverRow,
     NamedCount,
     SecFormCount,
+    SectorConstituent,
+    SectorCoverageRow,
+    SectorPerformancePoint,
+    SectorPerformanceResponse,
+    SectorPerformanceSeries,
+    SectorSnapshotResponse,
+    SectorTrendItem,
+    SectorTrendsResponse,
     StreamEarningsRow,
     StreamInsiderRow,
     StreamSecRow,
     SecFormAtlas,
     SecFormInventory,
-    SectorCoverageRow,
     StaticFinancialsBucketAtlas,
     StaticFinancialsSlice,
     StatsOverviewResponse,
@@ -1053,3 +1061,259 @@ async def ingest_health(
         if key in c:
             c[key] += 1
     return IngestHealthResponse(**c)
+
+
+# =============================================================================
+# Phase 1: Sector Performance APIs (expose sector_performance_series table)
+# =============================================================================
+
+
+@router.get(
+    "/data/sector-performance",
+    response_model=SectorPerformanceResponse,
+    summary="Sector performance time series (exposes sector_performance_series table)",
+)
+async def sector_performance(
+    sectors: str | None = Query(
+        None,
+        description="Comma-separated sector names (e.g., 'Technology,Healthcare'). Omit for all.",
+    ),
+    metric: str = Query(
+        "return_pct",
+        description="Metric type: 'return_pct' or 'pe_ratio'",
+    ),
+    days: int = Query(365, ge=30, le=2000),
+) -> SectorPerformanceResponse:
+    sector_list = []
+    if sectors:
+        sector_list = [s.strip() for s in sectors.split(",") if s.strip()]
+
+    async with async_session_factory() as session:
+        date_cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
+
+        base_stmt = select(SectorPerformanceSeries).where(
+            SectorPerformanceSeries.metric == metric,
+            SectorPerformanceSeries.date >= date_cutoff,
+        )
+        if sector_list:
+            base_stmt = base_stmt.where(SectorPerformanceSeries.sector.in_(sector_list))
+
+        stmt = base_stmt.order_by(
+            SectorPerformanceSeries.sector,
+            SectorPerformanceSeries.date.asc(),
+        )
+        rows = (await session.scalars(stmt)).all()
+
+    # Group by sector
+    by_sector: dict[str, list[SectorPerformancePoint]] = {}
+    for r in rows:
+        if r.sector not in by_sector:
+            by_sector[r.sector] = []
+        by_sector[r.sector].append(
+            SectorPerformancePoint(date=r.date, value=r.value)
+        )
+
+    series_list = [
+        SectorPerformanceSeries(
+            sector=sec,
+            metric=metric,
+            rows=len(points),
+            date_min=points[0].date if points else None,
+            date_max=points[-1].date if points else None,
+            items=points,
+        )
+        for sec, points in by_sector.items()
+    ]
+
+    return SectorPerformanceResponse(
+        sectors=list(by_sector.keys()),
+        metric=metric,
+        series=series_list,
+    )
+
+
+@router.get(
+    "/data/sector-trends",
+    response_model=SectorTrendsResponse,
+    summary="Latest sector trends: 1D/1W/1M changes and avg PE",
+)
+async def sector_trends() -> SectorTrendsResponse:
+    async with async_session_factory() as session:
+        today = datetime.now(timezone.utc).date()
+        d1 = today - timedelta(days=1)
+        d7 = today - timedelta(days=7)
+        d30 = today - timedelta(days=30)
+
+        # Get latest available date for returns
+        latest_date = await session.scalar(
+            select(func.max(SectorPerformanceSeries.date))
+            .where(SectorPerformanceSeries.metric == "return_pct")
+        )
+
+        if not latest_date:
+            return SectorTrendsResponse(as_of_date=None, trends=[])
+
+        # Get all sectors
+        sector_rows = (
+            await session.execute(
+                select(
+                    SectorPerformanceSeries.sector,
+                    func.count(),
+                )
+                .where(SectorPerformanceSeries.metric == "return_pct")
+                .group_by(SectorPerformanceSeries.sector)
+            )
+        ).all()
+        all_sectors = [r[0] for r in sector_rows]
+
+        trends: list[SectorTrendItem] = []
+        for sector in all_sectors:
+            # Get latest return
+            latest_row = await session.scalar(
+                select(SectorPerformanceSeries)
+                .where(
+                    SectorPerformanceSeries.sector == sector,
+                    SectorPerformanceSeries.metric == "return_pct",
+                    SectorPerformanceSeries.date <= latest_date,
+                )
+                .order_by(SectorPerformanceSeries.date.desc())
+                .limit(1)
+            )
+
+            # Get 1W ago return
+            w1_row = await session.scalar(
+                select(SectorPerformanceSeries)
+                .where(
+                    SectorPerformanceSeries.sector == sector,
+                    SectorPerformanceSeries.metric == "return_pct",
+                    SectorPerformanceSeries.date <= d7,
+                )
+                .order_by(SectorPerformanceSeries.date.desc())
+                .limit(1)
+            )
+
+            # Get 1M ago return
+            m1_row = await session.scalar(
+                select(SectorPerformanceSeries)
+                .where(
+                    SectorPerformanceSeries.sector == sector,
+                    SectorPerformanceSeries.metric == "return_pct",
+                    SectorPerformanceSeries.date <= d30,
+                )
+                .order_by(SectorPerformanceSeries.date.desc())
+                .limit(1)
+            )
+
+            # Get avg PE
+            pe_row = await session.scalar(
+                select(SectorPerformanceSeries)
+                .where(
+                    SectorPerformanceSeries.sector == sector,
+                    SectorPerformanceSeries.metric == "pe_ratio",
+                    SectorPerformanceSeries.date <= latest_date,
+                )
+                .order_by(SectorPerformanceSeries.date.desc())
+                .limit(1)
+            )
+
+            latest_val = latest_row.value if latest_row else None
+            w1_val = w1_row.value if w1_row else None
+            m1_val = m1_row.value if m1_row else None
+
+            trends.append(
+                SectorTrendItem(
+                    sector=sector,
+                    change_1d=latest_val,
+                    change_1w=(latest_val - w1_val) if latest_val is not None and w1_val is not None else None,
+                    change_1m=(latest_val - m1_val) if latest_val is not None and m1_val is not None else None,
+                    avg_pe=pe_row.value if pe_row else None,
+                )
+            )
+
+        # Sort by 1D change desc
+        trends.sort(key=lambda x: (x.change_1d or 0), reverse=True)
+
+        return SectorTrendsResponse(as_of_date=latest_date, trends=trends)
+
+
+@router.get(
+    "/data/sector/{sector}/snapshot",
+    response_model=SectorSnapshotResponse,
+    summary="Sector snapshot: constituents with key metrics",
+)
+async def sector_snapshot(
+    sector: str,
+    limit: int = Query(50, ge=1, le=200),
+) -> SectorSnapshotResponse:
+    sec = sector.strip()
+    if not sec or len(sec) > 100:
+        raise HTTPException(status_code=400, detail="Invalid sector")
+
+    async with async_session_factory() as session:
+        # Get latest price data for all active symbols in this sector
+        ranked = (
+            select(
+                DailyPrice.symbol.label("symbol"),
+                DailyPrice.date.label("date"),
+                DailyPrice.close.label("close"),
+                DailyPrice.volume.label("volume"),
+                func.row_number()
+                .over(partition_by=DailyPrice.symbol, order_by=DailyPrice.date.desc())
+                .label("rn"),
+            )
+            .subquery()
+        )
+        latest = select(ranked).where(ranked.c.rn == 1).subquery()
+        prev = select(ranked).where(ranked.c.rn == 2).subquery()
+        change_expr = (latest.c.close - prev.c.close) / func.nullif(prev.c.close, 0)
+
+        rows = (
+            await session.execute(
+                select(
+                    latest.c.symbol,
+                    StockUniverse.company_name,
+                    StockUniverse.market_cap,
+                    latest.c.close,
+                    prev.c.close,
+                    change_expr,
+                    latest.c.volume,
+                )
+                .join(StockUniverse, StockUniverse.symbol == latest.c.symbol)
+                .outerjoin(prev, prev.c.symbol == latest.c.symbol)
+                .where(
+                    StockUniverse.is_actively_trading.is_(True),
+                    StockUniverse.sector.ilike(sec),
+                    latest.c.close.is_not(None),
+                )
+                .order_by(StockUniverse.market_cap.desc().nulls_last())
+                .limit(limit)
+            )
+        ).all()
+
+        constituents = [
+            SectorConstituent(
+                symbol=r[0],
+                company_name=r[1],
+                market_cap=float(r[2]) if r[2] else None,
+                change_pct=float(r[5]) if r[5] is not None else None,
+                pe_ratio=None,  # TODO: join with sector_performance_series
+                volume=int(r[6]) if r[6] else None,
+            )
+            for r in rows
+        ]
+
+        # Calculate aggregates
+        avg_change = sum(c.change_pct for c in constituents if c.change_pct is not None) / len(
+            [c for c in constituents if c.change_pct is not None]
+        ) if constituents else None
+
+        total_cap = sum(c.market_cap for c in constituents if c.market_cap is not None)
+
+        return SectorSnapshotResponse(
+            sector=sec,
+            avg_pe=None,  # TODO: from sector_performance_series
+            avg_change_1d=avg_change,
+            avg_change_1m=None,  # TODO: calculate from historical
+            total_market_cap=total_cap,
+            constituents=constituents,
+        )

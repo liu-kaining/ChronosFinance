@@ -357,3 +357,57 @@ class IngestHealthResponse(BaseModel):
     failed: int = 0
     ok: int = 0
     skipped: int = 0
+
+
+# =============================================================================
+# Sector Performance (exposes sector_performance_series table)
+# =============================================================================
+class SectorPerformancePoint(BaseModel):
+    date: dt_date
+    value: float | None = None
+
+
+class SectorPerformanceSeries(BaseModel):
+    sector: str
+    metric: str
+    rows: int
+    date_min: dt_date | None = None
+    date_max: dt_date | None = None
+    items: list[SectorPerformancePoint] = Field(default_factory=list)
+
+
+class SectorPerformanceResponse(BaseModel):
+    sectors: list[str] = Field(default_factory=list)
+    metric: str
+    series: list[SectorPerformanceSeries] = Field(default_factory=list)
+
+
+class SectorTrendItem(BaseModel):
+    sector: str
+    change_1d: float | None = None
+    change_1w: float | None = None
+    change_1m: float | None = None
+    avg_pe: float | None = None
+
+
+class SectorTrendsResponse(BaseModel):
+    as_of_date: dt_date | None = None
+    trends: list[SectorTrendItem] = Field(default_factory=list)
+
+
+class SectorConstituent(BaseModel):
+    symbol: str
+    company_name: str | None = None
+    market_cap: float | None = None
+    change_pct: float | None = None
+    pe_ratio: float | None = None
+    volume: int | None = None
+
+
+class SectorSnapshotResponse(BaseModel):
+    sector: str
+    avg_pe: float | None = None
+    avg_change_1d: float | None = None
+    avg_change_1m: float | None = None
+    total_market_cap: float | None = None
+    constituents: list[SectorConstituent] = Field(default_factory=list)

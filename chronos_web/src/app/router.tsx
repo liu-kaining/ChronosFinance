@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { WelcomePage } from "@/pages/Welcome";
 import { SymbolLayout } from "@/pages/Symbol";
+import { EvidenceChainPage } from "@/pages/Symbol/EvidenceChain";
 import { SymbolOverview } from "@/pages/Symbol/Overview";
 import { SymbolChart } from "@/pages/Symbol/Chart";
 import { SymbolFinancials } from "@/pages/Symbol/Financials";
@@ -11,6 +12,8 @@ import { SymbolAnalyst } from "@/pages/Symbol/Analyst";
 import { SymbolPeers } from "@/pages/Symbol/Peers";
 import { SymbolSec } from "@/pages/Symbol/Sec";
 import { SymbolRaw } from "@/pages/Symbol/Raw";
+import { SectorDetailPage } from "@/pages/Sector";
+import { WatchlistPage } from "@/pages/Watchlist";
 import { GlobalLayout } from "@/pages/Global";
 import { MarketPulsePage } from "@/pages/Global/MarketPulse";
 import { MacroDashboardPage } from "@/pages/Global/MacroDashboard";
@@ -46,7 +49,8 @@ export const router = createBrowserRouter([
         path: "symbol/:symbol",
         element: <SymbolLayout />,
         children: [
-          { index: true, element: <Navigate to="overview" replace /> },
+          { index: true, element: <Navigate to="evidence" replace /> },
+          { path: "evidence", element: <EvidenceChainPage /> },
           { path: "overview", element: <SymbolOverview /> },
           { path: "chart", element: <SymbolChart /> },
           { path: "financials", element: <SymbolFinancials /> },
@@ -56,6 +60,18 @@ export const router = createBrowserRouter([
           { path: "sec", element: <SymbolSec /> },
           { path: "raw", element: <SymbolRaw /> },
         ],
+      },
+
+      // ---------- Sector analysis ----------
+      {
+        path: "sector/:sector",
+        element: <SectorDetailPage />,
+      },
+
+      // ---------- Watchlist ----------
+      {
+        path: "watchlist",
+        element: <WatchlistPage />,
       },
     ],
   },

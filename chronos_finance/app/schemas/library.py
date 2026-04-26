@@ -120,3 +120,75 @@ class SecFilingsListResponse(BaseModel):
     symbol: str
     rows: int
     items: list[SecFilingMeta] = Field(default_factory=list)
+
+
+# =============================================================================
+# Market Cap History (exposes daily_market_cap table)
+# =============================================================================
+class MarketCapItem(BaseModel):
+    date: date
+    market_cap: int | None = Field(default=None, description="Market cap in USD")
+
+
+class MarketCapHistoryResponse(BaseModel):
+    symbol: str
+    rows: int
+    items: list[MarketCapItem] = Field(default_factory=list)
+
+
+# =============================================================================
+# DCF Valuation (exposes valuation_dcf table)
+# =============================================================================
+class ValuationHistoryItem(BaseModel):
+    date: date
+    dcf: float | None = Field(default=None, description="DCF intrinsic value")
+    stock_price: float | None = Field(default=None, description="Stock price at date")
+
+
+class ValuationResponse(BaseModel):
+    symbol: str
+    latest_dcf: float | None = None
+    latest_price: float | None = None
+    upside_pct: float | None = Field(
+        default=None,
+        description="(dcf - price) / price * 100",
+    )
+    rows: int
+    items: list[ValuationHistoryItem] = Field(default_factory=list)
+
+
+# =============================================================================
+# Dividend History (exposes dividend_calendar_global table)
+# =============================================================================
+class DividendItem(BaseModel):
+    date: date
+    dividend: float | None = None
+    adjusted_dividend: float | None = None
+    record_date: date | None = None
+    payment_date: date | None = None
+    declaration_date: date | None = None
+
+
+class DividendHistoryResponse(BaseModel):
+    symbol: str
+    rows: int
+    items: list[DividendItem] = Field(default_factory=list)
+
+
+# =============================================================================
+# Stock Split History (exposes split_calendar_global table)
+# =============================================================================
+class SplitItem(BaseModel):
+    date: date
+    numerator: float | None = None
+    denominator: float | None = None
+    ratio_str: str | None = Field(
+        default=None,
+        description="Human-readable ratio like '2:1'",
+    )
+
+
+class SplitHistoryResponse(BaseModel):
+    symbol: str
+    rows: int
+    items: list[SplitItem] = Field(default_factory=list)
