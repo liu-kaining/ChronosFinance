@@ -37,17 +37,24 @@ export function SymbolEvents() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="card p-3">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-tertiary">事件叙事</div>
+        <div className="text-sm text-text-secondary">
+          先看 EPS 是否持续超预期，再结合公司行为与内部人交易判断“基本面改善是否被资金验证”。
+        </div>
+      </div>
+
       <div className="card grid grid-cols-3 gap-3 p-3 text-center">
         <div>
-          <div className="text-2xs text-text-tertiary">Earnings Rows</div>
+          <div className="text-2xs text-text-tertiary">财报记录</div>
           <div className="kpi-num">{(earnings?.items ?? []).length}</div>
         </div>
         <div>
-          <div className="text-2xs text-text-tertiary">Insider Rows</div>
+          <div className="text-2xs text-text-tertiary">内部人交易</div>
           <div className="kpi-num">{(insider?.items ?? []).length}</div>
         </div>
         <div>
-          <div className="text-2xs text-text-tertiary">Corp Actions</div>
+          <div className="text-2xs text-text-tertiary">公司行为</div>
           <div className="kpi-num">{(actions?.items ?? []).length}</div>
         </div>
       </div>
@@ -55,7 +62,7 @@ export function SymbolEvents() {
       {/* EPS Surprise Chart */}
       <div className="card p-3">
         <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          <span>EPS Surprise (Last {epsWindow} Quarters)</span>
+          <span>EPS 超预期（近 {epsWindow} 个季度）</span>
           <div className="flex items-center gap-1 normal-case tracking-normal">
             {[8, 12, 16].map((w) => (
               <button
@@ -83,7 +90,7 @@ export function SymbolEvents() {
 
       <div className="card p-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          EPS Surprise Heatmap (Quarter Matrix)
+          EPS 超预期热力图（季度矩阵）
         </div>
         <EpsSurpriseHeatmap items={earnings?.items ?? []} window={epsWindow} />
       </div>
@@ -93,13 +100,13 @@ export function SymbolEvents() {
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border-soft text-left text-text-tertiary">
-              <th className="px-2 py-1.5">Date</th>
-              <th className="px-2 py-1.5">Fiscal Period</th>
-              <th className="px-2 py-1.5 text-right">EPS Est</th>
-              <th className="px-2 py-1.5 text-right">EPS Actual</th>
-              <th className="px-2 py-1.5 text-right">Surprise</th>
-              <th className="px-2 py-1.5 text-right">Rev Est</th>
-              <th className="px-2 py-1.5 text-right">Rev Actual</th>
+              <th className="px-2 py-1.5">日期</th>
+              <th className="px-2 py-1.5">财报期</th>
+              <th className="px-2 py-1.5 text-right">EPS 预期</th>
+              <th className="px-2 py-1.5 text-right">EPS 实际</th>
+              <th className="px-2 py-1.5 text-right">超预期</th>
+              <th className="px-2 py-1.5 text-right">营收预期</th>
+              <th className="px-2 py-1.5 text-right">营收实际</th>
             </tr>
           </thead>
           <tbody>
@@ -143,7 +150,7 @@ export function SymbolEvents() {
       {/* Corporate Actions */}
       <div className="card p-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          Corporate Actions
+          公司行为（分红 / 拆股）
         </div>
         <div className="flex flex-wrap gap-2">
           {(actions?.items ?? []).slice(0, 10).map((a, i) => (
@@ -169,7 +176,7 @@ export function SymbolEvents() {
             </div>
           ))}
           {(!actions?.items || actions.items.length === 0) && (
-            <span className="text-xs text-text-tertiary">No recent actions</span>
+            <span className="text-xs text-text-tertiary">暂无近期公司行为</span>
           )}
         </div>
       </div>
@@ -177,16 +184,16 @@ export function SymbolEvents() {
       {/* Insider trades */}
       <div className="card overflow-auto p-2">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          Insider Trades
+          内部人交易
         </div>
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border-soft text-left text-text-tertiary">
-              <th className="px-2 py-1.5">Filing Date</th>
-              <th className="px-2 py-1.5">Insider</th>
-              <th className="px-2 py-1.5">Type</th>
-              <th className="px-2 py-1.5 text-right">Shares</th>
-              <th className="px-2 py-1.5 text-right">Price</th>
+              <th className="px-2 py-1.5">申报日期</th>
+              <th className="px-2 py-1.5">主体</th>
+              <th className="px-2 py-1.5">类型</th>
+              <th className="px-2 py-1.5 text-right">股数</th>
+              <th className="px-2 py-1.5 text-right">价格</th>
             </tr>
           </thead>
           <tbody>
@@ -226,7 +233,7 @@ export function SymbolEvents() {
           </tbody>
         </table>
         {(!insider?.items || insider.items.length === 0) && (
-          <div className="py-4 text-center text-xs text-text-tertiary">No insider trades</div>
+          <div className="py-4 text-center text-xs text-text-tertiary">暂无内部人交易</div>
         )}
       </div>
     </div>
@@ -246,7 +253,7 @@ function EpsSurpriseChart({
     .reverse();
 
   if (data.length === 0) {
-    return <div className="py-8 text-center text-xs text-text-tertiary">No EPS data</div>;
+    return <div className="py-8 text-center text-xs text-text-tertiary">暂无 EPS 数据</div>;
   }
 
   const option = {
@@ -255,7 +262,7 @@ function EpsSurpriseChart({
       trigger: "axis",
     },
     legend: {
-      data: ["Estimated", "Actual"],
+      data: ["预期", "实际"],
       top: 0,
       textStyle: { color: COLORS.text },
     },
@@ -274,14 +281,14 @@ function EpsSurpriseChart({
     },
     series: [
       {
-        name: "Estimated",
+        name: "预期",
         type: "bar",
         data: data.map((d) => d.eps_estimated),
         itemStyle: { color: "#6b7280" },
         barWidth: "35%",
       },
       {
-        name: "Actual",
+        name: "实际",
         type: "bar",
         data: data.map((d) => d.eps_actual),
         itemStyle: {
@@ -316,7 +323,7 @@ function EpsSurpriseHeatmap({
     .sort((a, b) => a.year.localeCompare(b.year));
 
   if (enriched.length === 0) {
-    return <div className="py-8 text-center text-xs text-text-tertiary">No EPS surprise data</div>;
+    return <div className="py-8 text-center text-xs text-text-tertiary">暂无 EPS 超预期数据</div>;
   }
 
   const years = Array.from(new Set(enriched.map((x) => x.year)));
@@ -332,7 +339,7 @@ function EpsSurpriseHeatmap({
       position: "top",
       formatter: (p: { data: [number, number, number] }) => {
         const [x, y, v] = p.data;
-        return `${years[x]} ${quarters[y]}<br/>Surprise: ${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+        return `${years[x]} ${quarters[y]}<br/>超预期：${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
       },
     },
     grid: { left: 52, right: 18, top: 8, bottom: 28 },

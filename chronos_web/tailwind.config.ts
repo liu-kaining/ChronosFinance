@@ -9,43 +9,43 @@ const config: Config = {
     extend: {
       colors: {
         // Background layers
-        "bg-0": "#0d1015",
-        "bg-1": "#131722",
-        "bg-2": "#1e222d",
-        "bg-3": "#2a2e39",
-        panel: "#131722",
-        "panel-hi": "#1e222d",
-        "panel-lo": "#0d1015",
+        "bg-0": "rgb(var(--bg-0) / <alpha-value>)",
+        "bg-1": "rgb(var(--bg-1) / <alpha-value>)",
+        "bg-2": "rgb(var(--bg-2) / <alpha-value>)",
+        "bg-3": "rgb(var(--bg-3) / <alpha-value>)",
+        panel: "rgb(var(--panel) / <alpha-value>)",
+        "panel-hi": "rgb(var(--panel-hi) / <alpha-value>)",
+        "panel-lo": "rgb(var(--panel-lo) / <alpha-value>)",
 
         // Borders
-        border: "#363a45",
-        "border-soft": "#2a2e39",
+        border: "rgb(var(--border) / <alpha-value>)",
+        "border-soft": "rgb(var(--border-soft) / <alpha-value>)",
 
         // Text
-        "text-primary": "#d1d4dc",
-        "text-secondary": "#9598a1",
-        "text-tertiary": "#5d606b",
-        muted: "#9598a1",
-        subtle: "#5d606b",
+        "text-primary": "rgb(var(--text-0) / <alpha-value>)",
+        "text-secondary": "rgb(var(--text-1) / <alpha-value>)",
+        "text-tertiary": "rgb(var(--text-2) / <alpha-value>)",
+        muted: "rgb(var(--text-1) / <alpha-value>)",
+        subtle: "rgb(var(--text-2) / <alpha-value>)",
 
         // Financial signal (TradingView default)
-        up: "#26a69a",
-        down: "#ef5350",
-        "up-soft": "rgba(38,166,154,0.15)",
-        "down-soft": "rgba(239,83,80,0.15)",
+        up: "rgb(var(--up) / <alpha-value>)",
+        down: "rgb(var(--down) / <alpha-value>)",
+        "up-soft": "rgb(var(--up-soft) / <alpha-value>)",
+        "down-soft": "rgb(var(--down-soft) / <alpha-value>)",
 
         // Accents
-        accent: "#2962ff",
-        "accent-2": "#f7931a",
-        warn: "#ff9800",
-        purple: "#9c27b0",
-        cyan: "#00bcd4",
-        pink: "#e91e63",
+        accent: "rgb(var(--accent) / <alpha-value>)",
+        "accent-2": "rgb(var(--accent-2) / <alpha-value>)",
+        warn: "rgb(var(--warn) / <alpha-value>)",
+        purple: "rgb(var(--purple) / <alpha-value>)",
+        cyan: "rgb(var(--cyan) / <alpha-value>)",
+        pink: "rgb(var(--pink) / <alpha-value>)",
 
         // Semantic
-        ok: "#26a69a",
-        stale: "#ff9800",
-        fail: "#ef5350",
+        ok: "rgb(var(--up) / <alpha-value>)",
+        stale: "rgb(var(--warn) / <alpha-value>)",
+        fail: "rgb(var(--down) / <alpha-value>)",
       },
       fontFamily: {
         sans: [

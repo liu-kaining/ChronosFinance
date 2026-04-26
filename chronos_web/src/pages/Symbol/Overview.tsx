@@ -53,11 +53,18 @@ export function SymbolOverview() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="card p-4">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-tertiary">投资叙事</div>
+        <div className="text-sm text-text-secondary">
+          先看价格与成交确认市场定价，再看最近业绩与数据覆盖，最后核验公告与内部人行为是否支持这个定价。
+        </div>
+      </div>
+
       {/* Price card */}
       <div className="card grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
         <KpiCard
           icon={<DollarSign size={16} />}
-          label="Last Price"
+          label="最新价"
           value={latest?.close != null ? fmtNum(latest.close, 2) : "—"}
           sub={change !== null ? fmtPctSigned(change, 2) : undefined}
           subColor={signalColor(change)}
@@ -65,43 +72,43 @@ export function SymbolOverview() {
         />
         <KpiCard
           icon={<BarChart3 size={16} />}
-          label="Volume"
+          label="成交量"
           value={latest?.volume != null ? fmtCap(latest.volume, 0) : "—"}
           sub={latest?.date ? fmtDay(latest.date) : undefined}
           loading={snapLoading}
         />
         <KpiCard
           icon={<PieChart size={16} />}
-          label="Market Cap"
+          label="市值"
           value={fmtCap(snap?.universe?.market_cap)}
           sub={snap?.universe?.sector ?? undefined}
           loading={invLoading}
         />
         <KpiCard
           icon={<Calendar size={16} />}
-          label="Exchange"
+          label="交易所"
           value={snap?.universe?.exchange ?? "—"}
-          sub={snap?.universe?.is_actively_trading ? "Trading" : "Inactive"}
+          sub={snap?.universe?.is_actively_trading ? "交易中" : "未活跃"}
           loading={invLoading}
         />
       </div>
 
       {snap?.latest_earnings && (
         <div className="card p-4">
-          <div className="mb-2 text-xs text-text-tertiary">Latest Earnings</div>
+          <div className="mb-2 text-xs text-text-tertiary">最近财报</div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
-              <div className="text-2xs text-text-tertiary">Date</div>
+              <div className="text-2xs text-text-tertiary">日期</div>
               <div className="font-mono text-sm text-text-secondary">{fmtDay(snap.latest_earnings.date)}</div>
             </div>
             <div>
-              <div className="text-2xs text-text-tertiary">EPS Est / Act</div>
+              <div className="text-2xs text-text-tertiary">EPS 预期 / 实际</div>
               <div className="font-mono text-sm text-text-secondary">
                 {fmtNum(snap.latest_earnings.eps_estimated, 2)} / {fmtNum(snap.latest_earnings.eps_actual, 2)}
               </div>
             </div>
             <div className="col-span-2">
-              <div className="text-2xs text-text-tertiary">Revenue Est / Act</div>
+              <div className="text-2xs text-text-tertiary">营收预期 / 实际</div>
               <div className="font-mono text-sm text-text-secondary">
                 {fmtCap(snap.latest_earnings.revenue_estimated)} / {fmtCap(snap.latest_earnings.revenue_actual)}
               </div>
@@ -113,7 +120,7 @@ export function SymbolOverview() {
       {/* Data availability grid */}
       <div className="card p-4">
         <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          Data Availability
+          数据可用性
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {(catsData?.categories ?? []).map((c) => (
@@ -121,7 +128,7 @@ export function SymbolOverview() {
           ))}
           {(!catsData?.categories || catsData.categories.length === 0) && (
             <div className="col-span-full py-4 text-center text-sm text-text-tertiary">
-              No financial data categories found.
+              未发现财务数据分类。
             </div>
           )}
         </div>
@@ -129,17 +136,17 @@ export function SymbolOverview() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="card p-4">
-          <div className="mb-2 text-xs text-text-tertiary">Sync Coverage</div>
+          <div className="mb-2 text-xs text-text-tertiary">同步覆盖</div>
           <div className="kpi-num">
             {snap?.synced_flags_true ?? 0}/{snap?.synced_flags_total ?? 0}
           </div>
         </div>
         <div className="card p-4">
-          <div className="mb-2 text-xs text-text-tertiary">Insider Trades (90d)</div>
+          <div className="mb-2 text-xs text-text-tertiary">内部人交易（90天）</div>
           <div className="kpi-num">{fmtNum(snap?.insider_rows_90d, 0)}</div>
         </div>
         <div className="card p-4">
-          <div className="mb-2 text-xs text-text-tertiary">SEC Forms</div>
+          <div className="mb-2 text-xs text-text-tertiary">SEC 表单</div>
           <div className="text-sm text-text-secondary">
             {(snap?.sec_by_form ?? []).slice(0, 3).map((s) => `${s.form_type}:${s.rows}`).join(" · ") || "—"}
           </div>
@@ -149,7 +156,7 @@ export function SymbolOverview() {
       {/* Company info */}
       {snap?.universe?.company_name && (
         <div className="card p-4">
-          <div className="mb-1 text-xs text-text-tertiary">Company</div>
+          <div className="mb-1 text-xs text-text-tertiary">公司信息</div>
           <div className="text-sm text-text-primary">{snap.universe.company_name}</div>
           {snap.universe.industry && (
             <div className="mt-1 text-xs text-text-secondary">

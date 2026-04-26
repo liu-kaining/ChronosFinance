@@ -16,6 +16,7 @@ import { MarketPulsePage } from "@/pages/Global/MarketPulse";
 import { MacroDashboardPage } from "@/pages/Global/MacroDashboard";
 import { EventStreamPage } from "@/pages/Global/EventStream";
 import { DataQualityPage } from "@/pages/Global/DataQuality";
+import { DataAssetsPage } from "@/pages/Global/DataAssets";
 import { NotFoundPage } from "@/pages/NotFound";
 
 export const router = createBrowserRouter([
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
           { path: "macro", element: <MacroDashboardPage /> },
           { path: "events", element: <EventStreamPage /> },
           { path: "quality", element: <DataQualityPage /> },
+          { path: "data-assets", element: <DataAssetsPage /> },
         ],
       },
 

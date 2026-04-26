@@ -14,16 +14,17 @@ import { api, endpoints } from "@/lib/api";
 import type { SymbolInventory } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { fmtCap } from "@/lib/format";
+import { zh } from "@/lib/i18n-zh";
 
 const TABS = [
-  { to: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
-  { to: "chart", label: "Chart", icon: <LineChart size={14} /> },
-  { to: "financials", label: "Financials", icon: <Receipt size={14} /> },
-  { to: "events", label: "Events", icon: <CalendarClock size={14} /> },
-  { to: "analyst", label: "Analyst", icon: <Users size={14} /> },
-  { to: "peers", label: "Peers", icon: <Users size={14} /> },
-  { to: "sec", label: "SEC", icon: <FileText size={14} /> },
-  { to: "raw", label: "Raw", icon: <Code2 size={14} /> },
+  { to: "overview", label: zh.symbolTabs.overview, icon: <LayoutDashboard size={14} /> },
+  { to: "chart", label: zh.symbolTabs.chart, icon: <LineChart size={14} /> },
+  { to: "financials", label: zh.symbolTabs.financials, icon: <Receipt size={14} /> },
+  { to: "events", label: zh.symbolTabs.events, icon: <CalendarClock size={14} /> },
+  { to: "analyst", label: zh.symbolTabs.analyst, icon: <Users size={14} /> },
+  { to: "peers", label: zh.symbolTabs.peers, icon: <Users size={14} /> },
+  { to: "sec", label: zh.symbolTabs.sec, icon: <FileText size={14} /> },
+  { to: "raw", label: zh.symbolTabs.raw, icon: <Code2 size={14} /> },
 ];
 
 export function SymbolLayout() {
@@ -52,19 +53,19 @@ export function SymbolLayout() {
           )}
         </div>
         <div className="flex flex-col text-right">
-          <div className="text-xs text-text-tertiary">Sector</div>
+          <div className="text-xs text-text-tertiary">{zh.field.sector}</div>
           <div className="text-sm text-text-secondary">
             {inv?.universe?.sector ?? "—"}
           </div>
         </div>
         <div className="flex flex-col text-right">
-          <div className="text-xs text-text-tertiary">Market Cap</div>
+          <div className="text-xs text-text-tertiary">{zh.field.marketCap}</div>
           <div className="font-mono text-sm text-text-secondary">
             {fmtCap(inv?.universe?.market_cap)}
           </div>
         </div>
         <div className="flex flex-col text-right">
-          <div className="text-xs text-text-tertiary">Exchange</div>
+          <div className="text-xs text-text-tertiary">{zh.field.exchange}</div>
           <div className="text-sm text-text-secondary">
             {inv?.universe?.exchange ?? "—"}
           </div>

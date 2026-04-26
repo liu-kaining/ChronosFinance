@@ -31,6 +31,12 @@ export function SymbolAnalyst() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="card p-3">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-tertiary">预期叙事</div>
+        <div className="text-sm text-text-secondary">
+          先看目标价区间与中位数，再看盈利一致预期，判断“当前价格与市场共识”之间的偏离程度。
+        </div>
+      </div>
       {isLoading ? (
         <div className="card flex h-[300px] items-center justify-center">
           <div className="text-sm text-text-tertiary">Loading…</div>
@@ -41,20 +47,20 @@ export function SymbolAnalyst() {
           {latestTarget && (
             <div className="card grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
               <MetricCard
-                label="Target Low"
+                label="目标价下限"
                 value={extractNum(latestTarget, "targetLow")}
               />
               <MetricCard
-                label="Target Mean"
+                label="目标价均值"
                 value={extractNum(latestTarget, "targetMean")}
                 highlight
               />
               <MetricCard
-                label="Target High"
+                label="目标价上限"
                 value={extractNum(latestTarget, "targetHigh")}
               />
               <MetricCard
-                label="Target Median"
+                label="目标价中位数"
                 value={extractNum(latestTarget, "targetMedian")}
               />
             </div>
@@ -64,7 +70,7 @@ export function SymbolAnalyst() {
           {priceTargets.length > 0 && (
             <div className="card p-3">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-                Price Target Distribution
+                目标价分布
               </div>
               <PriceTargetChart data={priceTargets.slice(0, 5)} />
             </div>
@@ -73,16 +79,16 @@ export function SymbolAnalyst() {
           {/* Consensus table */}
           <div className="card overflow-auto p-2">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-              Consensus Estimates
+              一致预期
             </div>
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border-soft text-left text-text-tertiary">
-                  <th className="px-2 py-1.5">Kind</th>
-                  <th className="px-2 py-1.5">Ref Date</th>
-                  <th className="px-2 py-1.5 text-right">EPS Est</th>
-                  <th className="px-2 py-1.5 text-right">Rev Est</th>
-                  <th className="px-2 py-1.5 text-right">EBITDA Est</th>
+                  <th className="px-2 py-1.5">类型</th>
+                  <th className="px-2 py-1.5">参考日期</th>
+                  <th className="px-2 py-1.5 text-right">EPS 预期</th>
+                  <th className="px-2 py-1.5 text-right">营收预期</th>
+                  <th className="px-2 py-1.5 text-right">EBITDA 预期</th>
                 </tr>
               </thead>
               <tbody>
@@ -115,7 +121,7 @@ export function SymbolAnalyst() {
             </table>
             {consensusAnnual.length === 0 && consensusQuarter.length === 0 && (
               <div className="py-4 text-center text-xs text-text-tertiary">
-                No consensus data
+                暂无一致预期数据
               </div>
             )}
           </div>
@@ -124,14 +130,14 @@ export function SymbolAnalyst() {
           {items.length > 0 && (
             <div className="card overflow-auto p-2">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-                All Analyst Data ({items.length} rows)
+                全部分析师数据（{items.length} 行）
               </div>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border-soft text-left text-text-tertiary">
-                    <th className="px-2 py-1.5">Kind</th>
-                    <th className="px-2 py-1.5">Ref Date</th>
-                    <th className="px-2 py-1.5">Published</th>
+                    <th className="px-2 py-1.5">类型</th>
+                    <th className="px-2 py-1.5">参考日期</th>
+                    <th className="px-2 py-1.5">发布时间</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -156,7 +162,7 @@ export function SymbolAnalyst() {
 
           {items.length === 0 && (
             <div className="card flex h-[200px] items-center justify-center">
-              <div className="text-sm text-text-tertiary">No analyst data available.</div>
+              <div className="text-sm text-text-tertiary">暂无分析师数据。</div>
             </div>
           )}
         </>
@@ -205,7 +211,7 @@ function PriceTargetChart({ data }: { data: Array<{ raw_payload: Record<string, 
   }).filter((t) => t.mean != null);
 
   if (targets.length === 0) {
-    return <div className="py-4 text-center text-xs text-text-tertiary">No price target data</div>;
+    return <div className="py-4 text-center text-xs text-text-tertiary">暂无目标价数据</div>;
   }
 
   const latest = targets[0]!;
@@ -219,7 +225,7 @@ function PriceTargetChart({ data }: { data: Array<{ raw_payload: Record<string, 
     grid: { left: 48, right: 16, top: 16, bottom: 32 },
     xAxis: {
       type: "category",
-      data: ["Low", "Median", "Mean", "High"],
+      data: ["下限", "中位", "均值", "上限"],
       axisLine: { lineStyle: { color: COLORS.borderSoft } },
       axisLabel: { color: COLORS.text1, fontSize: 10 },
     },

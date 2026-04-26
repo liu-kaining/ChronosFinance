@@ -86,8 +86,8 @@ export function CommandPalette({ open, onClose }: Props) {
             onValueChange={setQuery}
             placeholder={
               aiMode
-                ? "Ask anything… e.g. 'ROE>20% AI chip stocks'"
-                : "Search symbol (NVDA, AAPL, …)"
+                ? "输入问题… 例如：'ROE>20% 的 AI 芯片股'"
+                : "搜索股票代码（NVDA、AAPL…）"
             }
             className="flex-1 bg-transparent py-3 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none"
           />
@@ -100,7 +100,7 @@ export function CommandPalette({ open, onClose }: Props) {
                 ? "bg-accent-2/15 text-accent-2"
                 : "bg-bg-3 text-text-secondary hover:text-text-primary",
             )}
-            title="Toggle AI mode"
+            title="切换 AI 模式"
           >
             AI
           </button>
@@ -114,14 +114,14 @@ export function CommandPalette({ open, onClose }: Props) {
             <div className="p-6 text-center text-sm text-text-secondary">
               <Sparkles className="mx-auto mb-2 text-accent-2" size={20} />
               AI mode is available once the <code>chronos_ai</code> service is
-              running.
+              启动后可用。
             </div>
           ) : (
             <>
               {loading ? (
                 <Command.Loading>
                   <div className="p-3 text-xs text-text-tertiary">
-                    Searching…
+                    搜索中…
                   </div>
                 </Command.Loading>
               ) : null}
@@ -129,7 +129,7 @@ export function CommandPalette({ open, onClose }: Props) {
               {!loading && query.trim() && items.length === 0 ? (
                 <Command.Empty>
                   <div className="p-3 text-xs text-text-tertiary">
-                    No matching symbol.
+                    没有匹配标的。
                   </div>
                 </Command.Empty>
               ) : null}

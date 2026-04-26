@@ -5,10 +5,12 @@ import {
   CalendarClock,
   ShieldCheck,
   Compass,
+  Layers,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
+import { zh } from "@/lib/i18n-zh";
 
 interface NavItem {
   to: string;
@@ -18,21 +20,26 @@ interface NavItem {
 }
 
 const PRIMARY: NavItem[] = [
-  { to: "/", label: "Home", icon: <Compass size={16} />, end: true },
+  { to: "/", label: zh.nav.home, icon: <Compass size={16} />, end: true },
 ];
 
 const GLOBAL: NavItem[] = [
   {
     to: "/global/market-pulse",
-    label: "Market Pulse",
+    label: zh.nav.marketPulse,
     icon: <LayoutDashboard size={16} />,
   },
-  { to: "/global/macro", label: "Macro", icon: <LineChart size={16} /> },
-  { to: "/global/events", label: "Events", icon: <CalendarClock size={16} /> },
+  { to: "/global/macro", label: zh.nav.macro, icon: <LineChart size={16} /> },
+  { to: "/global/events", label: zh.nav.events, icon: <CalendarClock size={16} /> },
   {
     to: "/global/quality",
-    label: "Data Quality",
+    label: zh.nav.dataQuality,
     icon: <ShieldCheck size={16} />,
+  },
+  {
+    to: "/global/data-assets",
+    label: zh.nav.dataAssets,
+    icon: <Layers size={16} />,
   },
 ];
 
@@ -40,7 +47,7 @@ export function SideNav() {
   return (
     <nav className="flex w-56 shrink-0 flex-col gap-4 border-r border-border-soft bg-panel-lo px-2 py-3">
       <Section title={null} items={PRIMARY} />
-      <Section title="Global" items={GLOBAL} />
+      <Section title="全局" items={GLOBAL} />
     </nav>
   );
 }

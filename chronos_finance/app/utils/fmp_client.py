@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -114,14 +114,20 @@ class FMPClient:
         return self._client
 
     @retry(
-        # Only retry genuinely transient failures — transport errors and 5xx.
-        # FMPResponseError is raised on LOGICAL conditions (quota exhausted,
-        # "No Data", non-JSON body). Those will not improve with a retry and
-        # every retry still burns one rate-limiter slot, so we surface them
-        # immediately and let the caller decide (e.g. sec_filings treats
-        # "No Data" as skip-this-year, analysts raise for anything else).
-        retry=retry_if_exception_type(
-            (httpx.HTTPStatusError, httpx.TransportError)
+        # Retry only transient failures:
+        # - transport/network errors
+        # - HTTP 5xx
+        # Do NOT retry 4xx (esp. 404 endpoint mismatch), otherwise each bad
+        # endpoint burns 5 retries and stalls queue throughput.
+        retry=retry_if_exception(
+            lambda exc: (
+                isinstance(exc, httpx.TransportError)
+                or (
+                    isinstance(exc, httpx.HTTPStatusError)
+                    and exc.response is not None
+                    and exc.response.status_code >= 500
+                )
+            )
         ),
         wait=wait_exponential(multiplier=1, min=1, max=30),
         stop=stop_after_attempt(5),

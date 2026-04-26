@@ -68,7 +68,7 @@ export function SymbolRaw() {
     queryKey: ["cashflow-raw", sym],
     queryFn: () =>
       api.get<StaticSeriesResponse>(endpoints.staticData(sym), {
-        params: { category: "cash_flow_statement_annual", period: "annual", limit: 5 },
+        params: { category: "cash_flow_annual", period: "annual", limit: 5 },
       }),
     enabled: !!sym && source === "cashflow",
     staleTime: 5 * 60_000,

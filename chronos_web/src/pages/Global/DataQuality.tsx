@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck, Database, AlertTriangle, CheckCircle } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { api, endpoints } from "@/lib/api";
 import type { SyncProgressResponse, StatsOverview } from "@/lib/types";
@@ -20,14 +21,14 @@ export function DataQualityPage() {
 
   const progressItems = syncProgress
     ? [
-        { label: "Income Statement", completed: syncProgress.active_with_income_synced, total: syncProgress.active_symbols },
-        { label: "Balance Sheet", completed: syncProgress.active_with_balance_synced, total: syncProgress.active_symbols },
-        { label: "Cash Flow", completed: syncProgress.active_with_cashflow_synced, total: syncProgress.active_symbols },
-        { label: "Prices", completed: syncProgress.active_with_prices_synced, total: syncProgress.active_symbols },
-        { label: "Earnings", completed: syncProgress.active_with_earnings_synced, total: syncProgress.active_symbols },
-        { label: "Insider", completed: syncProgress.active_with_insider_synced, total: syncProgress.active_symbols },
-        { label: "Estimates", completed: syncProgress.active_with_estimates_synced, total: syncProgress.active_symbols },
-        { label: "SEC Filings", completed: syncProgress.active_with_filings_synced, total: syncProgress.active_symbols },
+        { label: "利润表", completed: syncProgress.active_with_income_synced, total: syncProgress.active_symbols },
+        { label: "资产负债表", completed: syncProgress.active_with_balance_synced, total: syncProgress.active_symbols },
+        { label: "现金流量表", completed: syncProgress.active_with_cashflow_synced, total: syncProgress.active_symbols },
+        { label: "日线行情", completed: syncProgress.active_with_prices_synced, total: syncProgress.active_symbols },
+        { label: "财报日历 / EPS", completed: syncProgress.active_with_earnings_synced, total: syncProgress.active_symbols },
+        { label: "内部人交易", completed: syncProgress.active_with_insider_synced, total: syncProgress.active_symbols },
+        { label: "分析师预期", completed: syncProgress.active_with_estimates_synced, total: syncProgress.active_symbols },
+        { label: "SEC 申报", completed: syncProgress.active_with_filings_synced, total: syncProgress.active_symbols },
       ]
     : [];
 
@@ -43,28 +44,28 @@ export function DataQualityPage() {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5 text-xs text-text-tertiary">
             <Database size={12} />
-            <span>Total Symbols</span>
+            <span>标的总数</span>
           </div>
           <div className="kpi-num">{fmtNum(stats?.universe.total, 0)}</div>
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5 text-xs text-text-tertiary">
             <CheckCircle size={12} />
-            <span>Active</span>
+            <span>交易中</span>
           </div>
           <div className="kpi-num text-up">{fmtNum(stats?.universe.active, 0)}</div>
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5 text-xs text-text-tertiary">
             <AlertTriangle size={12} />
-            <span>Inactive</span>
+            <span>未活跃</span>
           </div>
           <div className="kpi-num text-text-tertiary">{fmtNum(stats?.universe.inactive, 0)}</div>
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5 text-xs text-text-tertiary">
             <ShieldCheck size={12} />
-            <span>Data Rows</span>
+            <span>核心表行数（估）</span>
           </div>
           <div className="kpi-num">
             {fmtCap(
@@ -80,7 +81,7 @@ export function DataQualityPage() {
       {/* Sync progress */}
       <div className="card p-3">
         <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          Data Coverage (Active Symbols)
+          活跃标的数据集覆盖
         </div>
         {isLoading ? (
           <div className="h-[200px] animate-pulse rounded bg-bg-3" />
@@ -95,17 +96,17 @@ export function DataQualityPage() {
 
       <div className="card p-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          Remaining Gaps (Priority)
+          剩余缺口（按缺失数排序）
         </div>
         {gapItems.length === 0 ? (
-          <div className="text-xs text-up">All tracked datasets have full active-symbol coverage.</div>
+          <div className="text-xs text-up">当前跟踪的数据集在活跃标的上已全部覆盖。</div>
         ) : (
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border-soft text-left text-text-tertiary">
-                <th className="px-2 py-1.5">Dataset</th>
-                <th className="px-2 py-1.5 text-right">Covered</th>
-                <th className="px-2 py-1.5 text-right">Missing</th>
+                <th className="px-2 py-1.5">数据集</th>
+                <th className="px-2 py-1.5 text-right">已覆盖</th>
+                <th className="px-2 py-1.5 text-right">缺失</th>
               </tr>
             </thead>
             <tbody>
@@ -126,17 +127,24 @@ export function DataQualityPage() {
       {/* Table counts */}
       <div className="card p-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          Table Row Counts
+          主表行数（与 /stats/overview 一致）
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <TableCount label="Daily Prices" count={stats?.tables.daily_prices} />
-          <TableCount label="Financials" count={stats?.tables.static_financials} />
-          <TableCount label="Earnings" count={stats?.tables.earnings_calendar} />
-          <TableCount label="Insider" count={stats?.tables.insider_trades} />
-          <TableCount label="Analyst" count={stats?.tables.analyst_estimates} />
-          <TableCount label="SEC Files" count={stats?.tables.sec_files} />
-          <TableCount label="Corp Actions" count={stats?.tables.corporate_actions} />
-          <TableCount label="Macro" count={stats?.tables.macro_economics} />
+          <TableCount label="日线" count={stats?.tables.daily_prices} />
+          <TableCount label="财务长表" count={stats?.tables.static_financials} />
+          <TableCount label="财报/日历" count={stats?.tables.earnings_calendar} />
+          <TableCount label="内部人" count={stats?.tables.insider_trades} />
+          <TableCount label="分析师" count={stats?.tables.analyst_estimates} />
+          <TableCount label="SEC" count={stats?.tables.sec_files} />
+          <TableCount label="公司行为" count={stats?.tables.corporate_actions} />
+          <TableCount label="宏观" count={stats?.tables.macro_economics} />
+        </div>
+        <div className="mt-3 text-2xs text-text-tertiary">
+          需要看「全库物理表、空表原因、是否已做进界面」请打开{" "}
+          <Link to="/global/data-assets" className="text-accent hover:underline">
+            数据资产
+          </Link>
+          。
         </div>
       </div>
     </div>

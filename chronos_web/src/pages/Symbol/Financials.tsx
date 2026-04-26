@@ -10,12 +10,12 @@ import { fmtCap, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 const CATEGORIES = [
-  { key: "income_statement_annual", label: "Income (Annual)" },
-  { key: "income_statement_quarter", label: "Income (Quarter)" },
-  { key: "balance_sheet_annual", label: "Balance Sheet (Annual)" },
-  { key: "balance_sheet_quarter", label: "Balance Sheet (Quarter)" },
-  { key: "cash_flow_statement_annual", label: "Cash Flow (Annual)" },
-  { key: "cash_flow_statement_quarter", label: "Cash Flow (Quarter)" },
+  { key: "income_statement_annual", label: "利润表（年）" },
+  { key: "income_statement_quarter", label: "利润表（季）" },
+  { key: "balance_sheet_annual", label: "资产负债表（年）" },
+  { key: "balance_sheet_quarter", label: "资产负债表（季）" },
+  { key: "cash_flow_annual", label: "现金流量表（年）" },
+  { key: "cash_flow_quarter", label: "现金流量表（季）" },
 ];
 
 type FinancialRow = {
@@ -30,7 +30,7 @@ export function SymbolFinancials() {
   const [selected, setSelected] = useState(CATEGORIES[0]!);
 
   const period = selected.key.includes("_quarter") ? "quarter" : "annual";
-  const category = selected.key.replace(/_(annual|quarter)$/, "");
+  const category = selected.key;
 
   const { data, isLoading } = useQuery({
     queryKey: ["static", sym, category, period],
@@ -40,6 +40,7 @@ export function SymbolFinancials() {
       }),
     enabled: !!sym && !!category,
     staleTime: 5 * 60_000,
+    refetchOnMount: "always",
   });
 
   const rows = (data?.items ?? []) as FinancialRow[];
@@ -47,6 +48,12 @@ export function SymbolFinancials() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="card p-3">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-tertiary">财务叙事</div>
+        <div className="text-sm text-text-secondary">
+          用同一期间看“收入→利润→现金流”，判断增长质量是否可持续，而不是只看单个 EPS。
+        </div>
+      </div>
       {/* Category selector */}
       <div className="flex flex-wrap gap-2">
         {CATEGORIES.map((c) => (
@@ -72,27 +79,27 @@ export function SymbolFinancials() {
         </div>
       ) : !rows.length ? (
         <div className="card flex h-[400px] items-center justify-center">
-          <div className="text-sm text-text-tertiary">No data for this category.</div>
+          <div className="text-sm text-text-tertiary">该分类暂无数据。</div>
         </div>
       ) : (
         <>
           {/* Key metrics cards */}
           <div className="card grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
             <MetricCard
-              label="Revenue"
+              label="营收"
               value={extractValue(latest, "revenue")}
             />
             <MetricCard
-              label="Net Income"
+              label="净利润"
               value={extractValue(latest, "netIncome")}
             />
             <MetricCard
-              label="EPS"
+              label="每股收益"
               value={extractValue(latest, "eps")}
               digits={2}
             />
             <MetricCard
-              label="Operating Income"
+              label="营业利润"
               value={extractValue(latest, "operatingIncome")}
             />
           </div>
@@ -105,12 +112,12 @@ export function SymbolFinancials() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border-soft text-left text-text-tertiary">
-                  <th className="px-2 py-1.5">Fiscal Year</th>
+                  <th className="px-2 py-1.5">财年</th>
                   <th className="px-2 py-1.5">Q</th>
-                  <th className="px-2 py-1.5 text-right">Revenue</th>
-                  <th className="px-2 py-1.5 text-right">Gross Profit</th>
-                  <th className="px-2 py-1.5 text-right">Op Income</th>
-                  <th className="px-2 py-1.5 text-right">Net Income</th>
+                  <th className="px-2 py-1.5 text-right">营收</th>
+                  <th className="px-2 py-1.5 text-right">毛利</th>
+                  <th className="px-2 py-1.5 text-right">营业利润</th>
+                  <th className="px-2 py-1.5 text-right">净利润</th>
                   <th className="px-2 py-1.5 text-right">EPS</th>
                 </tr>
               </thead>
@@ -199,14 +206,14 @@ function RevenueWaterfall({ rows }: { rows: FinancialRow[] }) {
 
   // Waterfall data: [name, value, isTotal]
   const waterfallData: [string, number, boolean?][] = [
-    ["Revenue", revenue],
-    ["COGS", -cogs],
-    ["Gross Profit", grossProfit, true],
-    ["Op Expenses", -opExpenses],
-    ["Op Income", opIncome, true],
-    ["Interest", -Math.abs(interestExp)],
-    ["Tax", -Math.abs(taxExp)],
-    ["Net Income", netIncome, true],
+    ["营收", revenue],
+    ["营业成本", -cogs],
+    ["毛利润", grossProfit, true],
+    ["运营费用", -opExpenses],
+    ["营业利润", opIncome, true],
+    ["利息", -Math.abs(interestExp)],
+    ["税费", -Math.abs(taxExp)],
+    ["净利润", netIncome, true],
   ];
 
   // Build echarts waterfall
@@ -226,7 +233,7 @@ function RevenueWaterfall({ rows }: { rows: FinancialRow[] }) {
   const option = {
     ...echartsBase,
     title: {
-      text: "Income Statement Waterfall",
+      text: "利润表瀑布图",
       textStyle: { color: COLORS.text1, fontSize: 13 },
       left: 8,
       top: 4,

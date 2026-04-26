@@ -1,7 +1,7 @@
 """Response models for read-only DB insight endpoints."""
 
-from datetime import date
-from typing import Any
+from datetime import date as dt_date
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -28,6 +28,24 @@ class UniverseCounts(BaseModel):
 class StatsOverviewResponse(BaseModel):
     universe: UniverseCounts
     tables: TableCounts
+
+
+class TableInventoryItem(BaseModel):
+    """One physical table + ops context for UI/data storytelling."""
+
+    table: str
+    est_rows: int
+    name_zh: str
+    group_zh: str
+    exposed_in_ui: bool = Field(description="Roughly: has a first-class screen or symbol tab today.")
+    note: Optional[str] = None
+
+
+class TableInventoryResponse(BaseModel):
+    items: list[TableInventoryItem]
+    diagnostics_zh: str = Field(
+        description="Short explanation for empty tables / sync gaps (not a substitute for logs).",
+    )
 
 
 class SyncProgressResponse(BaseModel):
@@ -110,8 +128,8 @@ class StaticFinancialsSlice(BaseModel):
 
 class DateRangeStats(BaseModel):
     rows: int
-    date_min: date | None = None
-    date_max: date | None = None
+    date_min: Optional[dt_date] = None
+    date_max: Optional[dt_date] = None
 
 
 class NamedCount(BaseModel):
@@ -149,8 +167,8 @@ class SymbolInventoryResponse(BaseModel):
 class MacroSeriesSummary(BaseModel):
     series_id: str
     rows: int
-    date_min: date | None = None
-    date_max: date | None = None
+    date_min: Optional[dt_date] = None
+    date_max: Optional[dt_date] = None
 
 
 class MacroSeriesListResponse(BaseModel):
@@ -158,7 +176,7 @@ class MacroSeriesListResponse(BaseModel):
 
 
 class MacroSeriesPoint(BaseModel):
-    date: date
+    date: dt_date
     value: float | None = None
     raw_payload: dict[str, Any] = Field(default_factory=dict)
 
@@ -182,8 +200,8 @@ class StaticFinancialsBucketAtlas(BaseModel):
 
 class DateRangeWithJsonFootprint(BaseModel):
     rows: int
-    date_min: date | None = None
-    date_max: date | None = None
+    date_min: Optional[dt_date] = None
+    date_max: Optional[dt_date] = None
     approx_json_text_bytes: int = Field(
         0, description="Σ length(JSONB::text) for rows in scope (0 if table has no JSONB)"
     )
@@ -240,7 +258,7 @@ class SectorCoverageRow(BaseModel):
 class MoverRow(BaseModel):
     symbol: str
     company_name: str | None = None
-    date: date | None = None
+    date: Optional[dt_date] = None
     close: float | None = None
     prev_close: float | None = None
     change_pct: float | None = None
@@ -248,7 +266,7 @@ class MoverRow(BaseModel):
 
 
 class MarketSnapshotResponse(BaseModel):
-    as_of_date: date | None = None
+    as_of_date: Optional[dt_date] = None
     active_symbols: int
     sectors: list[SectorCoverageRow] = Field(default_factory=list)
     top_gainers: list[MoverRow] = Field(default_factory=list)
@@ -257,7 +275,7 @@ class MarketSnapshotResponse(BaseModel):
 
 
 class LatestPriceSnapshot(BaseModel):
-    date: date | None = None
+    date: Optional[dt_date] = None
     close: float | None = None
     prev_close: float | None = None
     change_pct: float | None = None
@@ -265,7 +283,7 @@ class LatestPriceSnapshot(BaseModel):
 
 
 class LatestEarningsSnapshot(BaseModel):
-    date: date | None = None
+    date: Optional[dt_date] = None
     eps_estimated: float | None = None
     eps_actual: float | None = None
     revenue_estimated: float | None = None
@@ -274,7 +292,7 @@ class LatestEarningsSnapshot(BaseModel):
 
 class LatestInsiderSnapshot(BaseModel):
     filing_date: str | None = None
-    transaction_date: date | None = None
+    transaction_date: Optional[dt_date] = None
     reporting_name: str | None = None
     transaction_type: str | None = None
     securities_transacted: float | None = None
@@ -283,7 +301,7 @@ class LatestInsiderSnapshot(BaseModel):
 class SecFormCount(BaseModel):
     form_type: str
     rows: int
-    latest_filing_date: date | None = None
+    latest_filing_date: Optional[dt_date] = None
 
 
 class SymbolSnapshotResponse(BaseModel):
@@ -302,7 +320,7 @@ class SymbolSnapshotResponse(BaseModel):
 class StreamEarningsRow(BaseModel):
     symbol: str
     company_name: str | None = None
-    date: date
+    date: dt_date
     eps_estimated: float | None = None
     eps_actual: float | None = None
     revenue_estimated: float | None = None
@@ -313,7 +331,7 @@ class StreamInsiderRow(BaseModel):
     symbol: str
     company_name: str | None = None
     filing_date: str | None = None
-    transaction_date: date | None = None
+    transaction_date: Optional[dt_date] = None
     reporting_name: str | None = None
     transaction_type: str | None = None
     securities_transacted: float | None = None
@@ -323,7 +341,7 @@ class StreamSecRow(BaseModel):
     symbol: str
     company_name: str | None = None
     form_type: str
-    filing_date: date | None = None
+    filing_date: Optional[dt_date] = None
     fiscal_year: int | None = None
     fiscal_period: str | None = None
 

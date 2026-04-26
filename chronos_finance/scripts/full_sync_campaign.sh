@@ -30,6 +30,9 @@
 #                          downstream POSTs never ran, e.g. campaign stopped after universe). Implies marker exists.
 #   FULL_SYNC_NO_PROGRESS_POLLS — consecutive no-growth polls before treating queue-drained stall
 #                                 as terminal failure (default 4)
+#   FULL_SYNC_QUEUE_GLOBALS — 1 = after the legacy /sync/* wave, also POST
+#                             /api/v1/ingest/datasets/<global key>/run (calendars, treasury, etc.)
+#                             (default 0; set to 1 to populate tables like dividend/split/ipo/economic)
 #
 set -euo pipefail
 
@@ -69,6 +72,7 @@ RESTART_API="${FULL_SYNC_RESTART_API:-0}"
 MIN_MACRO="${FULL_SYNC_MIN_MACRO_SERIES:-8}"
 QUEUE_ONLY="${FULL_SYNC_QUEUE_ONLY:-0}"
 NO_PROGRESS_POLLS="${FULL_SYNC_NO_PROGRESS_POLLS:-4}"
+QUEUE_GLOBALS="${FULL_SYNC_QUEUE_GLOBALS:-0}"
 
 log() { printf "\033[1;36m[campaign]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m[campaign]\033[0m %s\n" "$*"; }
@@ -86,6 +90,40 @@ http_post_sync() {
     die "POST /api/v1/sync/${path} → HTTP ${code} $(head -c 200 /tmp/campaign_sync_resp.json)"
   fi
   log "queued: ${path}"
+}
+
+http_post_ingest() {
+  local dataset_key="$1"
+  local code
+  code="$(curl -sS -o /tmp/campaign_ingest_resp.json -w "%{http_code}" -X POST "${WRITE_API_BASE}/api/v1/ingest/datasets/${dataset_key}/run")"
+  if [[ "$code" != "200" && "$code" != "202" ]]; then
+    warn "POST /api/v1/ingest/datasets/${dataset_key}/run → HTTP ${code} $(head -c 120 /tmp/campaign_ingest_resp.json)"
+    return 1
+  fi
+  log "queued ingest: ${dataset_key}"
+  return 0
+}
+
+queue_global_ingest_datasets() {
+  if [[ "$QUEUE_GLOBALS" != "1" ]]; then
+    log "FULL_SYNC_QUEUE_GLOBALS!=1 — skip global ingest wave (set FULL_SYNC_QUEUE_GLOBALS=1 to enable)."
+    return 0
+  fi
+  log "Queue global ingest datasets (FMP global calendars + treasury + sector + macro catalog)…"
+  local ds
+  for ds in \
+    global.dividends_calendar \
+    global.splits_calendar \
+    global.ipos_calendar \
+    global.economic_calendar \
+    global.earnings_calendar \
+    global.treasury_rates_wide \
+    global.macro_series_catalog \
+    global.sector_performance \
+    global.macro_economics
+  do
+    http_post_ingest "$ds" || true
+  done
 }
 
 macro_distinct() {
@@ -359,6 +397,8 @@ fi
 
 log "Queue all sync jobs (one wave) …"
 queue_all_sync_jobs
+
+queue_global_ingest_datasets
 
 log "Poll until every active symbol has all required flags and macro_economics is populated …"
 log "Tip: docker-compose logs -f api-write"

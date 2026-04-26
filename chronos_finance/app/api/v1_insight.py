@@ -1,8 +1,8 @@
 """Read-only endpoints to inspect Postgres contents (no FMP calls)."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import String, and_, cast, func, select
+from sqlalchemy import String, and_, cast, func, select, text
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -43,6 +43,8 @@ from app.schemas.insight import (
     SymbolDataAtlasResponse,
     SymbolInventoryResponse,
     SyncProgressResponse,
+    TableInventoryItem,
+    TableInventoryResponse,
     TableCounts,
     UniverseCounts,
     UniverseListResponse,
@@ -104,6 +106,84 @@ async def stats_overview() -> StatsOverviewResponse:
         ),
         tables=tables,
     )
+
+
+# --- (table, name_zh, group_zh, exposed_in_ui, note) ------------------------------
+_TABLE_INVENTORY_META: dict[str, tuple[str, str, bool, str | None]] = {
+    "stock_universe": ("股票池（标的元数据）", "主数据", True, None),
+    "static_financials": ("财务报表（长表）", "财务与估值", True, None),
+    "daily_prices": ("日线行情 OHLCV", "行情", True, None),
+    "daily_market_cap": ("日频市值", "行情 / 规模", False, "库内有数据，前端待整合展示"),
+    "corporate_actions": ("分红与拆并股", "公司行为", True, None),
+    "earnings_calendar": ("财报与 EPS 日历", "事件与业绩", True, None),
+    "insider_trades": ("内部人交易 (Form 4 等)", "资金与行为", True, None),
+    "analyst_estimates": ("分析师一致预期", "预期与目标价", True, None),
+    "sec_files": ("SEC 申报结构化/正文", "合规与报告", True, None),
+    "macro_economics": ("宏观指标时间序列", "宏观", True, None),
+    "macro_series_catalog": ("宏观系列目录", "宏观", False, "需跑 global.macro_series_catalog；多为空=未触发 ingest"),
+    "treasury_rates_wide": ("国债收益率宽表", "利率", False, "需跑 global.treasury_rates_wide"),
+    "sector_performance_series": ("板块表现序列", "市场结构", True, "global.sector_performance 失败或未跑时可能为空"),
+    "valuation_dcf": ("DCF 估值", "财务与估值", False, "部分标的有数据，可做单页/卡片"),
+    "sync_datasets": ("同步任务注册表", "运维", True, "通过 /ingest 接口可见"),
+    "sync_runs": ("同步运行记录", "运维", True, None),
+    "sync_state": ("同步游标/状态", "运维", True, None),
+    "dividend_calendar_global": ("全球分红日历", "市场事件", False, "需 global.dividends_calendar ingest"),
+    "split_calendar_global": ("全球拆股日历", "市场事件", False, "需 global.splits_calendar ingest"),
+    "ipo_calendar": ("IPO 日历", "市场事件", False, "需 global.ipos_calendar ingest"),
+    "economic_calendar": ("经济事件日历", "宏观 / 市场事件", False, "需 global.economic_calendar ingest"),
+    "stock_news": ("个股新闻", "舆情", False, "当前供应商路径可能不支持；系统会标记 skipped，避免队列卡死"),
+    "company_press_releases": ("公司新闻稿", "舆情", False, "同新闻类管线，全量前多为空"),
+    "company_employees_history": ("员工数历史", "公司基本面", False, "有同步任务，可做单卡展示"),
+    "equity_offerings": ("股权融资/增发", "公司行为", False, "库内可能有行，需专用视图"),
+}
+
+
+@router.get(
+    "/stats/table-inventory",
+    response_model=TableInventoryResponse,
+    summary="All public physical tables: row estimate + Chinese labels + UI exposure",
+)
+async def table_inventory() -> TableInventoryResponse:
+    """Uses pg_stat_user_tables (fast) — numbers are *estimates* until VACUUM/ANALYZE."""
+    diagnostics = (
+        "部分表为 0 行，常见原因不是“表坏了”而是任务未跑到："
+        "① 全量 full_sync_campaign 主要调用旧版 /api/v1/sync/*，不会自动拉齐 "
+        "global.dividends_calendar / global.splits_calendar / global.economic_calendar 等新版 ingest 数据集；"
+        "应运行 chronos_finance/scripts/daily_incremental_sync.sh，或手动 "
+        "POST /api/v1/ingest/datasets/{dataset_key}/run。"
+        "② 个股新闻、新闻稿为 P2 符号级任务，需单独排队。"
+        "③ sector_performance 若持续 failed，会连带板块序列为空——先看 api-write 日志与 FMP 配额。"
+    )
+    async with async_session_factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT relname::text AS table_name, n_live_tup::bigint AS est_rows "
+                    "FROM pg_stat_user_tables WHERE schemaname = 'public' "
+                    "ORDER BY n_live_tup DESC, relname"
+                )
+            )
+        ).mappings().all()
+    out: list[TableInventoryItem] = []
+    for r in rows:
+        tname = r["table_name"]
+        n = int(r["est_rows"] or 0)
+        meta = _TABLE_INVENTORY_META.get(tname)
+        if meta:
+            name_zh, group_zh, exposed, note = meta
+        else:
+            name_zh, group_zh, exposed, note = (tname, "其他", False, "尚未标注中文说明")
+        out.append(
+            TableInventoryItem(
+                table=tname,
+                est_rows=n,
+                name_zh=name_zh,
+                group_zh=group_zh,
+                exposed_in_ui=exposed,
+                note=note,
+            )
+        )
+    return TableInventoryResponse(items=out, diagnostics_zh=diagnostics)
 
 
 @router.get(
@@ -602,37 +682,6 @@ async def market_snapshot(
             or 0
         )
 
-        sector_rows = (
-            await session.execute(
-                select(
-                    func.coalesce(StockUniverse.sector, "Unknown"),
-                    func.count(),
-                    func.sum(StockUniverse.market_cap),
-                    func.avg(change_expr),
-                )
-                .select_from(latest)
-                .join(prev, prev.c.symbol == latest.c.symbol)
-                .join(StockUniverse, StockUniverse.symbol == latest.c.symbol)
-                .where(
-                    StockUniverse.is_actively_trading.is_(True),
-                    latest.c.close.is_not(None),
-                    prev.c.close.is_not(None),
-                )
-                .group_by(func.coalesce(StockUniverse.sector, "Unknown"))
-                .order_by(func.sum(StockUniverse.market_cap).desc().nulls_last(), func.count().desc())
-                .limit(20)
-            )
-        ).all()
-        sectors = [
-            SectorCoverageRow(
-                sector=r[0],
-                symbols=int(r[1] or 0),
-                market_cap_total=float(r[2]) if r[2] is not None else None,
-                avg_change_pct=float(r[3]) if r[3] is not None else None,
-            )
-            for r in sector_rows
-        ]
-
         ranked = (
             select(
                 DailyPrice.symbol.label("symbol"),
@@ -648,6 +697,38 @@ async def market_snapshot(
         latest = select(ranked).where(ranked.c.rn == 1).subquery()
         prev = select(ranked).where(ranked.c.rn == 2).subquery()
         change_expr = (latest.c.close - prev.c.close) / func.nullif(prev.c.close, 0)
+        sector_expr = func.coalesce(StockUniverse.sector, "Unknown")
+
+        sector_rows = (
+            await session.execute(
+                select(
+                    sector_expr,
+                    func.count(),
+                    func.sum(StockUniverse.market_cap),
+                    func.avg(change_expr),
+                )
+                .select_from(latest)
+                .join(prev, prev.c.symbol == latest.c.symbol)
+                .join(StockUniverse, StockUniverse.symbol == latest.c.symbol)
+                .where(
+                    StockUniverse.is_actively_trading.is_(True),
+                    latest.c.close.is_not(None),
+                    prev.c.close.is_not(None),
+                )
+                .group_by(sector_expr)
+                .order_by(func.sum(StockUniverse.market_cap).desc().nulls_last(), func.count().desc())
+                .limit(20)
+            )
+        ).all()
+        sectors = [
+            SectorCoverageRow(
+                sector=r[0],
+                symbols=int(r[1] or 0),
+                market_cap_total=float(r[2]) if r[2] is not None else None,
+                avg_change_pct=float(r[3]) if r[3] is not None else None,
+            )
+            for r in sector_rows
+        ]
 
         base_stmt = (
             select(
@@ -777,7 +858,7 @@ async def symbol_snapshot(symbol: str) -> SymbolSnapshotResponse:
                     .select_from(InsiderTrade)
                     .where(
                         InsiderTrade.symbol == sym,
-                        InsiderTrade.filing_date >= datetime.now(UTC) - timedelta(days=90),
+                        InsiderTrade.filing_date >= datetime.now(timezone.utc) - timedelta(days=90),
                     )
                 )
             )

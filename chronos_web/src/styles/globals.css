@@ -2,44 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
-/* =========================================================
- * TradingView Pro — dark gray theme tokens
- * Use via Tailwind (bg-panel / text-muted / border-border-soft)
- * ========================================================= */
+/* Theme tokens (dark/light) */
 :root {
   color-scheme: dark;
 
   /* backgrounds */
-  --bg-0: #0d1015;
-  --bg-1: #131722;
-  --bg-2: #1e222d;
-  --bg-3: #2a2e39;
-  --border: #363a45;
-  --border-soft: #2a2e39;
+  --bg-0: 13 16 21;
+  --bg-1: 19 23 34;
+  --bg-2: 30 34 45;
+  --bg-3: 42 46 57;
+  --panel: 19 23 34;
+  --panel-hi: 30 34 45;
+  --panel-lo: 13 16 21;
+  --border: 54 58 69;
+  --border-soft: 42 46 57;
 
   /* text */
-  --text-0: #d1d4dc;
-  --text-1: #9598a1;
-  --text-2: #5d606b;
+  --text-0: 226 232 240;
+  --text-1: 184 196 214;
+  --text-2: 132 144 164;
 
   /* signal */
-  --up: #26a69a;
-  --down: #ef5350;
-  --up-soft: rgba(38, 166, 154, 0.15);
-  --down-soft: rgba(239, 83, 80, 0.15);
+  --up: 14 165 126;
+  --down: 225 69 78;
+  --up-soft: 14 165 126;
+  --down-soft: 225 69 78;
 
   /* accents */
-  --accent: #2962ff;
-  --accent-2: #f7931a;
-  --warn: #ff9800;
-  --purple: #9c27b0;
-  --cyan: #00bcd4;
-  --pink: #e91e63;
+  --accent: 37 99 235;
+  --accent-2: 245 158 11;
+  --warn: 245 158 11;
+  --purple: 168 85 247;
+  --cyan: 6 182 212;
+  --pink: 236 72 153;
 
   /* semantic */
   --ok: var(--up);
   --stale: var(--warn);
   --fail: var(--down);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-0: 246 248 252;
+  --bg-1: 255 255 255;
+  --bg-2: 246 248 252;
+  --bg-3: 235 240 247;
+  --panel: 255 255 255;
+  --panel-hi: 246 248 252;
+  --panel-lo: 239 244 250;
+  --border: 191 202 218;
+  --border-soft: 214 223 235;
+
+  --text-0: 15 23 42;
+  --text-1: 51 65 85;
+  --text-2: 100 116 139;
+
+  --up: 5 150 105;
+  --down: 220 38 38;
+  --up-soft: 5 150 105;
+  --down-soft: 220 38 38;
+
+  --accent: 37 99 235;
+  --accent-2: 202 138 4;
+  --warn: 202 138 4;
+  --purple: 147 51 234;
+  --cyan: 8 145 178;
+  --pink: 219 39 119;
 }
 
 /* =========================================================
@@ -54,8 +84,8 @@ body,
 }
 
 body {
-  background: var(--bg-0);
-  color: var(--text-0);
+  background: rgb(var(--bg-0));
+  color: rgb(var(--text-0));
   font-family:
     Inter,
     -apple-system,
@@ -96,17 +126,17 @@ samp,
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--bg-3);
+  background: rgb(var(--bg-3));
   border-radius: 5px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: var(--border);
+  background: rgb(var(--border));
 }
 
 /* Remove default focus outline; use ring utility instead */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid rgb(var(--accent));
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -133,11 +163,11 @@ samp,
   }
 
   .up {
-    color: var(--up);
+    color: rgb(var(--up));
   }
 
   .down {
-    color: var(--down);
+    color: rgb(var(--down));
   }
 
   .chip {

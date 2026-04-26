@@ -30,6 +30,35 @@ from app.services.sync.utils import content_hash, estimate_bytes
 from app.utils.fmp_client import FMPResponseError, fmp_client
 
 
+def _is_not_found_error(exc: BaseException) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 404
+    if isinstance(exc, FMPResponseError):
+        msg = str(exc).lower()
+        return "404" in msg or "not found" in msg or "invalid endpoint" in msg
+    return False
+
+
+async def _get_with_endpoint_fallback(
+    endpoints: list[str],
+    *,
+    params: dict[str, Any],
+) -> tuple[Any, str]:
+    last_exc: BaseException | None = None
+    for ep in endpoints:
+        try:
+            payload = await fmp_client.get(ep, params=params)
+            return payload, ep
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if _is_not_found_error(exc):
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("No endpoint candidates provided")
+
+
 def _parse_datetime(v: Any) -> datetime | None:
     if v is None:
         return None
@@ -290,7 +319,35 @@ async def run_stock_news(ctx: DatasetContext) -> DatasetResult:
     cfg = ctx.spec.config or {}
     symbol = ctx.symbol
     limit = int(cfg.get("limit", 200))
-    payload = await fmp_client.get("/stock-news", params={"symbol": symbol, "limit": limit})
+    endpoint_used = ""
+    try:
+        payload, endpoint_used = await _get_with_endpoint_fallback(
+            ["/stock-news", "/stock_news", "/v3/stock-news", "/v3/stock_news"],
+            params={"symbol": symbol, "limit": limit},
+        )
+    except Exception as stock_exc:  # noqa: BLE001
+        try:
+            # Fallback: many FMP plans/base paths don't expose stock-news; try
+            # press releases as a lightweight proxy feed.
+            payload, endpoint_used = await _get_with_endpoint_fallback(
+                ["/press-releases", "/press_releases", "/v3/press-releases", "/v3/press_releases"],
+                params={"symbol": symbol, "limit": limit},
+            )
+            endpoint_used = f"{endpoint_used} (fallback from stock-news: {type(stock_exc).__name__})"
+        except Exception as press_exc:  # noqa: BLE001
+            # Hard fallback: vendor plan/path does not provide either endpoint.
+            # Return skipped (not failed) so queue health is not polluted.
+            return DatasetResult(
+                requests_count=0,
+                bytes_estimated=0,
+                content_hash=ctx.previous_state.content_hash_last if ctx.previous_state else None,
+                skipped_reason="endpoint_unavailable",
+                details={
+                    "symbol": symbol,
+                    "stock_news_error": str(stock_exc)[:200],
+                    "press_release_error": str(press_exc)[:200],
+                },
+            )
     entries = as_list(payload)
     payload_hash = content_hash(entries)
     bytes_estimated = estimate_bytes(entries)
@@ -341,7 +398,11 @@ async def run_stock_news(ctx: DatasetContext) -> DatasetResult:
         bytes_estimated=bytes_estimated,
         content_hash=payload_hash,
         cursor_value=max_published.isoformat() if max_published else ctx.previous_cursor_value,
-        details={"rows_upserted": len(rows), "payload_entries": len(entries)},
+        details={
+            "rows_upserted": len(rows),
+            "payload_entries": len(entries),
+            "endpoint_used": endpoint_used,
+        },
     )
 
 
@@ -349,7 +410,10 @@ async def run_press_releases(ctx: DatasetContext) -> DatasetResult:
     cfg = ctx.spec.config or {}
     symbol = ctx.symbol
     limit = int(cfg.get("limit", 200))
-    payload = await fmp_client.get("/press-releases", params={"symbol": symbol, "limit": limit})
+    payload, endpoint_used = await _get_with_endpoint_fallback(
+        ["/press-releases", "/press_releases", "/v3/press-releases", "/v3/press_releases"],
+        params={"symbol": symbol, "limit": limit},
+    )
     entries = as_list(payload)
     payload_hash = content_hash(entries)
     bytes_estimated = estimate_bytes(entries)
@@ -400,6 +464,10 @@ async def run_press_releases(ctx: DatasetContext) -> DatasetResult:
         bytes_estimated=bytes_estimated,
         content_hash=payload_hash,
         cursor_value=max_published.isoformat() if max_published else ctx.previous_cursor_value,
-        details={"rows_upserted": len(rows), "payload_entries": len(entries)},
+        details={
+            "rows_upserted": len(rows),
+            "payload_entries": len(entries),
+            "endpoint_used": endpoint_used,
+        },
     )
 
