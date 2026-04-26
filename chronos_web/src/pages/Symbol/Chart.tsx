@@ -198,11 +198,11 @@ export function SymbolChart() {
       <div className="flex items-center gap-4 text-xs">
         <div className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: maColors.ma20 }} />
-          <span className="text-text-secondary">MA20</span>
+          <span className="text-text-secondary">均线20</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: maColors.ma50 }} />
-          <span className="text-text-secondary">MA50</span>
+          <span className="text-text-secondary">均线50</span>
         </div>
         <div className="ml-auto text-text-tertiary">
           {data.rows} 根K线 · {data.items[0]?.date} 至 {data.items[data.items.length - 1]?.date}

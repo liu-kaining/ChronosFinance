@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import ReactECharts from "echarts-for-react";
 import { LineChart } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { api, endpoints } from "@/lib/api";
 import type { MacroSeriesListResponse, MacroSeriesDataResponse } from "@/lib/types";
@@ -8,6 +9,7 @@ import { echartsBase, COLORS } from "@/lib/theme";
 import { fmtNum, fmtDay } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { PageNarrative } from "@/components/ui/PageNarrative";
+import { EmptyDataState } from "@/components/ui/EmptyDataState";
 
 export function MacroDashboardPage() {
   const { data: seriesList, isLoading } = useQuery({
@@ -18,35 +20,98 @@ export function MacroDashboardPage() {
 
   const series = seriesList?.series ?? [];
 
-  // Find treasury yield series
-  const treasurySeries = series.filter((s) =>
-    s.series_id.toLowerCase().includes("treasury") ||
-    s.series_id.toLowerCase().includes("dgs10") ||
-    s.series_id.toLowerCase().includes("dgs2")
-  ).slice(0, 5);
+  const prioritySeries = useMemo(() => {
+    const ids = ["10Year", "2Year", "CPI", "GDP", "federalFunds", "unemploymentRate", "inflationRate"];
+    const map = new Map(series.map((s) => [s.series_id, s]));
+    const prioritized = ids.map((id) => map.get(id)).filter(Boolean);
+    const rest = series.filter((s) => !ids.includes(s.series_id)).slice(0, 6);
+    return [...prioritized, ...rest];
+  }, [series]);
 
-  // Fetch first treasury series data
-  const { data: treasuryData } = useQuery({
-    queryKey: ["macro-data", treasurySeries[0]?.series_id],
+  const [selectedSeriesId, setSelectedSeriesId] = useState<string>("");
+  useEffect(() => {
+    if (!selectedSeriesId && prioritySeries[0]?.series_id) {
+      setSelectedSeriesId(prioritySeries[0].series_id);
+    }
+  }, [prioritySeries, selectedSeriesId]);
+
+  const { data: selectedSeriesData } = useQuery({
+    queryKey: ["macro-data", selectedSeriesId],
     queryFn: () =>
       api.get<MacroSeriesDataResponse>(
-        endpoints.macroSeriesById(treasurySeries[0]?.series_id ?? ""),
+        endpoints.macroSeriesById(selectedSeriesId),
         { params: { limit: 365, order: "asc" } }
       ),
-    enabled: treasurySeries.length > 0,
+    enabled: !!selectedSeriesId,
     staleTime: 10 * 60_000,
   });
+
+  const trendSummary = useMemo(() => {
+    const rows = (selectedSeriesData?.items ?? []).filter((d) => typeof d.value === "number");
+    if (!rows.length) return null;
+    const first = rows[0]!;
+    const last = rows[rows.length - 1]!;
+    const delta = (last.value as number) - (first.value as number);
+    return {
+      first: first.value as number,
+      last: last.value as number,
+      delta,
+      start: first.date,
+      end: last.date,
+      direction: delta > 0 ? "上行" : delta < 0 ? "下行" : "震荡",
+    };
+  }, [selectedSeriesData?.items]);
 
   return (
     <div className="flex flex-col gap-4">
       <PageNarrative
         title="宏观叙事"
-        description="先看利率与增长关键序列，再看时间趋势，最后判断当前宏观环境对行业风格的约束。"
+        description="这页用于回答三件事：当前宏观变量在上行还是下行、变化幅度多大、它对市场风格意味着什么。"
       />
+
+      <div className="card p-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">一句话结论</div>
+        {trendSummary ? (
+          <div className="text-sm text-text-secondary">
+            当前关注序列 <span className="font-mono text-text-primary">{selectedSeriesId}</span> 在近一年呈
+            <span className={cn("mx-1 font-medium", trendSummary.delta > 0 ? "text-up" : trendSummary.delta < 0 ? "text-down" : "text-text-primary")}>
+              {trendSummary.direction}
+            </span>
+            趋势，区间变化 {fmtNum(trendSummary.first, 3)} → {fmtNum(trendSummary.last, 3)}（
+            {trendSummary.delta >= 0 ? "+" : ""}{fmtNum(trendSummary.delta, 3)}）。
+          </div>
+        ) : (
+          <div className="text-sm text-text-tertiary">当前序列暂无可计算趋势数据。</div>
+        )}
+      </div>
+
+      <div className="card p-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">可切换观察序列</div>
+        {prioritySeries.length === 0 ? (
+          <EmptyDataState title="暂无宏观序列可选" detail="请先检查宏观序列同步状态。" />
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {prioritySeries.slice(0, 16).map((s) => (
+              <button
+                key={s.series_id}
+                type="button"
+                onClick={() => setSelectedSeriesId(s.series_id)}
+                className={cn(
+                  "chip",
+                  selectedSeriesId === s.series_id ? "border-accent/40 bg-accent/10 text-accent" : "",
+                )}
+              >
+                {s.series_id}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="card p-3">
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
           <LineChart size={14} />
-          <span>可用宏观序列</span>
+          <span>宏观序列覆盖</span>
           <span className="ml-auto font-mono text-text-secondary">{series.length}</span>
         </div>
 
@@ -73,12 +138,12 @@ export function MacroDashboardPage() {
       </div>
 
       {/* Treasury yield chart */}
-      {treasuryData && (
+      {selectedSeriesData && (
         <div className="card p-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-            {treasuryData.series_id} · 近 365 天
+            {selectedSeriesData.series_id} · 近 365 天趋势
           </div>
-          <MacroLineChart data={treasuryData.items ?? []} />
+          <MacroLineChart data={selectedSeriesData.items ?? []} />
         </div>
       )}
 

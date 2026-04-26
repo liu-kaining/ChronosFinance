@@ -92,7 +92,7 @@ export function EventStreamPage() {
           <span className="text-xs text-text-tertiary">{open.earnings ? "收起" : "展开"}</span>
         </button>
         {!open.earnings ? null : isLoading ? (
-          <div className="py-4 text-center text-xs text-text-tertiary">加载中...</div>
+          <div className="py-4 text-center text-xs text-text-tertiary">加载中…</div>
         ) : earningsFiltered.length === 0 ? (
           <EmptyDataState
             title="当前筛选下暂无财报数据"
@@ -158,7 +158,7 @@ export function EventStreamPage() {
           <span className="text-xs text-text-tertiary">{open.insider ? "收起" : "展开"}</span>
         </button>
         {!open.insider ? null : isLoading ? (
-          <div className="py-4 text-center text-xs text-text-tertiary">加载中...</div>
+          <div className="py-4 text-center text-xs text-text-tertiary">加载中…</div>
         ) : insiderFiltered.length === 0 ? (
           <EmptyDataState
             title="当前筛选下暂无内部人数据"
@@ -226,7 +226,7 @@ export function EventStreamPage() {
           <span className="text-xs text-text-tertiary">{open.sec ? "收起" : "展开"}</span>
         </button>
         {!open.sec ? null : isLoading ? (
-          <div className="py-4 text-center text-xs text-text-tertiary">加载中...</div>
+          <div className="py-4 text-center text-xs text-text-tertiary">加载中…</div>
         ) : secFiltered.length === 0 ? (
           <EmptyDataState
             title="当前筛选下暂无 SEC 数据"

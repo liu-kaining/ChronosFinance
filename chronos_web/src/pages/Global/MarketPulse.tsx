@@ -482,10 +482,10 @@ function SectorTreemap({
           const move = d.move ?? 0;
           const color =
             move > 0
-              ? `${COLORS.up.replace("rgb(", "rgba(").replace(")", ",0.35)")}`
+              ? toRgba(COLORS.up, 0.28)
               : move < 0
-                ? `${COLORS.down.replace("rgb(", "rgba(").replace(")", ",0.35)")}`
-                : `${COLORS.accent.replace("rgb(", "rgba(").replace(")", ",0.25)")}`;
+                ? toRgba(COLORS.down, 0.24)
+                : toRgba(COLORS.accent, 0.2);
           return {
             name: d.name,
             value: d.value,
@@ -537,4 +537,11 @@ function SectorTreemap({
       }}
     />
   );
+}
+
+function toRgba(color: string, alpha: number): string {
+  const nums = color.match(/\d+(\.\d+)?/g);
+  if (!nums || nums.length < 3) return color;
+  const [r, g, b] = nums;
+  return `rgba(${r},${g},${b},${alpha})`;
 }
