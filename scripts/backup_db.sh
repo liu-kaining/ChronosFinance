@@ -53,16 +53,24 @@ log() { printf "\033[1;36m[backup]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m[backup]\033[0m %s\n" "$*"; }
 die() { printf "\033[1;31m[backup]\033[0m %s\n" "$*" >&2; exit 1; }
 
+if docker compose version >/dev/null 2>&1; then
+    DC=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+    DC=(docker-compose)
+else
+    die "Neither 'docker compose' nor 'docker-compose' is available."
+fi
+
 # Ensure backup directory exists
 mkdir -p "$BACKUP_DIR"
 
 # Check if database container is running
-if ! docker-compose ps --status running --services 2>/dev/null | grep -qx db; then
-    die "Database container not running. Start with: docker-compose up -d db"
+if ! "${DC[@]}" ps --status running --services 2>/dev/null | grep -qx db; then
+    die "Database container not running. Start with: docker compose up -d db"
 fi
 
 # Validate target database is reachable and exists (prevents silent mis-target backups)
-if ! docker-compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "SELECT 1" >/dev/null 2>&1; then
+if ! "${DC[@]}" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "SELECT 1" >/dev/null 2>&1; then
     die "Cannot access database '$POSTGRES_DB' as user '$POSTGRES_USER'. Check .env POSTGRES_DB/POSTGRES_USER."
 fi
 
@@ -94,12 +102,12 @@ log "Output: $BACKUP_FILE"
 
 TEMP_FILE="${BACKUP_FILE}.tmp"
 
-if docker-compose exec -T db pg_dump "${PG_OPTS[@]}" > "$TEMP_FILE"; then
+if "${DC[@]}" exec -T db pg_dump "${PG_OPTS[@]}" > "$TEMP_FILE"; then
     mv "$TEMP_FILE" "$BACKUP_FILE"
 
     # Validate dump readability using the db container's pg_restore
     # to avoid host/client version mismatch issues.
-    if ! docker-compose exec -T db pg_restore -l >/dev/null 2>&1 < "$BACKUP_FILE"; then
+    if ! "${DC[@]}" exec -T db pg_restore -l >/dev/null 2>&1 < "$BACKUP_FILE"; then
         rm -f "$BACKUP_FILE"
         die "Backup created but failed pg_restore list validation. File removed."
     fi
@@ -119,5 +127,5 @@ if docker-compose exec -T db pg_dump "${PG_OPTS[@]}" > "$TEMP_FILE"; then
     exit 0
 else
     rm -f "$TEMP_FILE"
-    die "pg_dump failed. Check database logs: docker-compose logs db"
+    die "pg_dump failed. Check database logs: docker compose logs db"
 fi
