@@ -8,6 +8,7 @@ import type { EarningsSeriesResponse, CorporateActionsResponse, InsiderSeriesRes
 import { echartsBase, COLORS, signalColor } from "@/lib/theme";
 import { fmtCap, fmtNum, fmtDay } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { buildDivergingScale, clampAbsMax, safePct } from "@/lib/chart-utils";
 import { EmptyDataState } from "@/components/ui/EmptyDataState";
 import { PageNarrative } from "@/components/ui/PageNarrative";
 
@@ -154,7 +155,7 @@ export function SymbolEvents() {
           <tbody>
             {earningsRows.slice(0, 12).map((e, i) => {
               const epsSurprise =
-                e.eps_estimated && e.eps_actual
+                e.eps_estimated != null && e.eps_estimated !== 0 && e.eps_actual != null
                   ? ((e.eps_actual - e.eps_estimated) / Math.abs(e.eps_estimated)) * 100
                   : null;
               return (
@@ -177,9 +178,9 @@ export function SymbolEvents() {
                   </td>
                   <td
                     className="px-2 py-1.5 text-right font-mono"
-                    style={{ color: signalColor(epsSurprise ? epsSurprise / 100 : null) }}
+                    style={{ color: signalColor(epsSurprise != null ? epsSurprise / 100 : null) }}
                   >
-                    {epsSurprise !== null ? `${epsSurprise >= 0 ? "+" : ""}${epsSurprise.toFixed(1)}%` : "—"}
+                    {safePct(epsSurprise, 1)}
                   </td>
                   <td className="px-2 py-1.5 text-right font-mono text-text-secondary">
                     {fmtCap(e.revenue_estimated)}
@@ -463,7 +464,7 @@ function EpsSurpriseHeatmap({
   const matrixValues = matrix
     .map((m) => m.value)
     .filter((row) => row[0] >= 0 && row[1] >= 0);
-  const maxAbs = Math.max(...matrixValues.map((m) => Math.abs(m[2])), 5);
+  const maxAbs = clampAbsMax(matrixValues.map((m) => m[2]), 5);
 
   const option = {
     ...echartsBase,
@@ -477,7 +478,7 @@ function EpsSurpriseHeatmap({
             : p.data?.value;
         if (!tuple) return "超预期：--";
         const [x, y, v] = tuple;
-        return `${years[x]} ${quarters[y]}<br/>超预期：${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+        return `${years[x]} ${quarters[y]}<br/>超预期：${safePct(v, 2)}`;
       },
     },
     grid: { left: 52, right: 18, top: 8, bottom: 28 },
@@ -500,7 +501,8 @@ function EpsSurpriseHeatmap({
       left: "center",
       bottom: 0,
       textStyle: { color: COLORS.text },
-      inRange: { color: [COLORS.down, COLORS.borderSoft, COLORS.up] },
+      // Use stable explicit colors to avoid theme var parsing edge cases in ECharts.
+      inRange: { color: buildDivergingScale("#ef4444", "#64748b", "#10b981") },
     },
     series: [
       {
@@ -523,7 +525,7 @@ function EpsSurpriseHeatmap({
                 ? p.data
                 : p.data?.value;
             if (!tuple || typeof tuple[2] !== "number") return "--";
-            return `${tuple[2]}%`;
+            return safePct(tuple[2], 1);
           },
         },
         emphasis: { itemStyle: { shadowBlur: 8, shadowColor: "rgba(0,0,0,0.35)" } },

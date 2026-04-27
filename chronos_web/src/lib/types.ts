@@ -82,6 +82,52 @@ export interface AnalystEstimatesResponse {
   [key: string]: unknown;
 }
 
+export interface DividendHistoryResponse {
+  symbol: string;
+  rows: number;
+  items: Array<{
+    date: string;
+    dividend?: number | null;
+    adjusted_dividend?: number | null;
+    record_date?: string | null;
+    payment_date?: string | null;
+    declaration_date?: string | null;
+  }>;
+}
+
+export interface SplitHistoryResponse {
+  symbol: string;
+  rows: number;
+  items: Array<{
+    date: string;
+    numerator?: number | null;
+    denominator?: number | null;
+    ratio_str?: string | null;
+  }>;
+}
+
+export interface ValuationResponse {
+  symbol: string;
+  latest_dcf?: number | null;
+  latest_price?: number | null;
+  upside_pct?: number | null;
+  rows: number;
+  items: Array<{
+    date: string;
+    dcf?: number | null;
+    stock_price?: number | null;
+  }>;
+}
+
+export interface MarketCapHistoryResponse {
+  symbol: string;
+  rows: number;
+  items: Array<{
+    date: string;
+    market_cap?: number | null;
+  }>;
+}
+
 export interface SecFilingsListResponse {
   items: Record<string, unknown>[];
   rows: number;
@@ -180,6 +226,47 @@ export interface MarketSnapshotResponse {
   most_active: MoverRow[];
 }
 
+export interface SectorTrendsResponse {
+  as_of_date?: string | null;
+  trends: Array<{
+    sector: string;
+    change_1d?: number | null;
+    change_1w?: number | null;
+    change_1m?: number | null;
+    avg_pe?: number | null;
+  }>;
+}
+
+export interface SectorSnapshotResponse {
+  sector: string;
+  as_of_date?: string | null;
+  avg_change_1d?: number | null;
+  avg_change_1m?: number | null;
+  avg_pe?: number | null;
+  total_market_cap?: number | null;
+  constituents: Array<{
+    symbol: string;
+    company_name?: string | null;
+    market_cap?: number | null;
+    change_pct?: number | null;
+    close?: number | null;
+    volume?: number | null;
+  }>;
+}
+
+export interface SectorPerformanceResponse {
+  sectors: string[];
+  metric: string;
+  series: Array<{
+    sector: string;
+    metric: string;
+    rows: number;
+    date_min?: string | null;
+    date_max?: string | null;
+    items: Array<{ date: string; value?: number | null }>;
+  }>;
+}
+
 export interface SymbolSnapshotResponse {
   symbol: string;
   universe?: UniverseItem;
@@ -189,6 +276,9 @@ export interface SymbolSnapshotResponse {
     prev_close?: number;
     change_pct?: number;
     volume?: number;
+    pe_ratio?: number;
+    fifty_two_week_low?: number;
+    fifty_two_week_high?: number;
   };
   latest_earnings?: {
     date?: string;

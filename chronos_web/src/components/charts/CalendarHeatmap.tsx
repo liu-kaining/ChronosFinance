@@ -4,7 +4,7 @@
  */
 
 import ReactECharts from "echarts-for-react";
-import { COLORS, echartsBase } from "@/lib/theme";
+import { COLORS, echartsBase, toRgba } from "@/lib/theme";
 
 interface CalendarDataPoint {
   date: string; // YYYY-MM-DD
@@ -17,13 +17,15 @@ interface Props {
   year?: number;
   height?: number;
   colorRange?: [string, string];
+  onDateClick?: (date: string) => void;
 }
 
 export function CalendarHeatmap({
   data,
   year = new Date().getFullYear(),
   height = 180,
-  colorRange = ["#1e222d", "#26a69a"],
+  colorRange = [toRgba(COLORS.accent, 0.12), toRgba(COLORS.up, 0.85)],
+  onDateClick,
 }: Props) {
   const values = data.map((d) => d.value);
   const maxValue = Math.max(...values, 1);
@@ -60,7 +62,8 @@ export function CalendarHeatmap({
       cellSize: ["auto", 13],
       range: String(year),
       itemStyle: {
-        color: COLORS.bg2,
+        // Zero-value cells: keep visible neutral background instead of black.
+        color: toRgba(COLORS.borderSoft, 0.25),
         borderWidth: 1,
         borderColor: COLORS.borderSoft,
       },
@@ -86,7 +89,18 @@ export function CalendarHeatmap({
     ],
   };
 
-  return <ReactECharts option={option} style={{ height }} />;
+  return (
+    <ReactECharts
+      option={option}
+      style={{ height }}
+      onEvents={{
+        click: (params: { data?: [string, number] }) => {
+          const date = params.data?.[0];
+          if (date) onDateClick?.(date);
+        },
+      }}
+    />
+  );
 }
 
 /**

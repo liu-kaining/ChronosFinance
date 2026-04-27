@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
 import { TrendingUp, TrendingDown, RefreshCcw, ArrowRight, BarChart3, PieChart } from "lucide-react";
@@ -34,26 +35,26 @@ export function MarketPulsePage() {
   const [selectedSector, setSelectedSector] = useState<string>("");
   const [viewMode, setViewMode] = useState<"matrix" | "treemap">("matrix");
 
-  const {  market, isLoading, refetch, isFetching } = useQuery({
+  const { data: market, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["market-snapshot"],
     queryFn: () => api.get<MarketSnapshotResponse>(endpoints.marketSnapshot(), { params: { limit: 10 } }),
     staleTime: 30_000,
   });
 
-  const {  sectorTrends } = useQuery({
+  const { data: sectorTrends } = useQuery({
     queryKey: ["sector-trends"],
     queryFn: () => api.get<SectorTrendsResponse>(endpoints.sectorTrends()),
     staleTime: 60_000,
   });
 
-  const {  sectorSnapshot } = useQuery({
+  const { data: sectorSnapshot } = useQuery({
     queryKey: ["sector-snapshot", selectedSector],
     queryFn: () => api.get<SectorSnapshotResponse>(endpoints.sectorSnapshot(selectedSector)),
     enabled: !!selectedSector,
     staleTime: 60_000,
   });
 
-  const {  universeRows } = useQuery({
+  useQuery({
     queryKey: ["universe-all-active"],
     queryFn: fetchAllActiveUniverse,
     staleTime: 10 * 60_000,
@@ -70,9 +71,9 @@ export function MarketPulsePage() {
     return trends.map((t) => ({
       sector: t.sector,
       periods: {
-        d1: t.change_1d,
-        w1: t.change_1w,
-        m1: t.change_1m,
+        d1: pctPointToRatio(t.change_1d),
+        w1: pctPointToRatio(t.change_1w),
+        m1: pctPointToRatio(t.change_1m),
         m3: null, // TODO: add to API
         y1: null, // TODO: add to API
       },
@@ -93,7 +94,7 @@ export function MarketPulsePage() {
     <div className="flex flex-col gap-4">
       <PageNarrative
         title="市场脉动"
-        description={`当前风格：${marketTone}。${topSector ? `最强板块为 ${topSector.sector}（${fmtPctSigned(topSector.change_1d, 2)}）` : ""}`}
+        description={`当前风格：${marketTone}。${topSector ? `最强板块为 ${topSector.sector}（${fmtPctSigned(pctPointToRatio(topSector.change_1d), 2)}）` : ""}`}
         actions={
           <div className="flex flex-wrap gap-2">
             <button
@@ -182,7 +183,7 @@ export function MarketPulsePage() {
                     (t.change_1d ?? 0) > 0 ? "text-up" : (t.change_1d ?? 0) < 0 ? "text-down" : "text-text-secondary"
                   )}
                 >
-                  {fmtPctSigned(t.change_1d, 1)}
+                  {fmtPctSigned(pctPointToRatio(t.change_1d), 1)}
                 </span>
                 {t.avg_pe && (
                   <span className="font-mono text-2xs text-text-tertiary">PE {t.avg_pe.toFixed(1)}</span>
@@ -290,7 +291,7 @@ function MoverCard({
   showVolume,
 }: {
   title: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   items: MarketSnapshotResponse["top_gainers"];
   colorClass?: string;
   showVolume?: boolean;
@@ -347,6 +348,10 @@ function StatBox({ label, value }: { label: string; value: string }) {
       <div className="mt-0.5 font-mono text-sm text-text-primary">{value}</div>
     </div>
   );
+}
+
+function pctPointToRatio(value: number | null | undefined): number | null {
+  return value == null ? null : value / 100;
 }
 
 function SectorTreemap({

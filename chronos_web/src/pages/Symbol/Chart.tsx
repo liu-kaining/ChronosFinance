@@ -10,7 +10,8 @@ import {
 } from "lightweight-charts";
 
 import { api, endpoints } from "@/lib/api";
-import type { PricesSeriesResponse } from "@/lib/types";
+import type { CorporateActionsResponse, EarningsSeriesResponse, PricesSeriesResponse } from "@/lib/types";
+import { fmtCap, fmtDay, fmtNum } from "@/lib/format";
 import { tvChartOptions, candleStyle, volumeStyle, maColors } from "@/lib/tv-theme";
 import { PageNarrative } from "@/components/ui/PageNarrative";
 
@@ -29,6 +30,18 @@ export function SymbolChart() {
       }),
     enabled: !!sym,
     staleTime: 60_000,
+  });
+  const { data: earnings } = useQuery({
+    queryKey: ["chart-earnings", sym],
+    queryFn: () => api.get<EarningsSeriesResponse>(endpoints.earnings(sym)),
+    enabled: !!sym,
+    staleTime: 5 * 60_000,
+  });
+  const { data: actions } = useQuery({
+    queryKey: ["chart-actions", sym],
+    queryFn: () => api.get<CorporateActionsResponse>(endpoints.corpActions(sym)),
+    enabled: !!sym,
+    staleTime: 5 * 60_000,
   });
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -213,6 +226,48 @@ export function SymbolChart() {
       <div className="card overflow-hidden p-1">
         <div ref={chartContainerRef} className="w-full" />
       </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="card p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+            价格区间摘要
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <ChartStat label="起始" value={fmtNum(data.items[0]?.close, 2)} />
+            <ChartStat label="最新" value={fmtNum(data.items[data.items.length - 1]?.close, 2)} />
+            <ChartStat label="成交量" value={fmtCap(data.items[data.items.length - 1]?.volume, 0)} />
+          </div>
+        </div>
+        <div className="card p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+            关键事件标记
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(earnings?.items ?? []).slice(0, 4).map((e, i) => (
+              <span key={`earnings-${i}`} className="chip">
+                财报 {fmtDay(e.date)} EPS {fmtNum(e.eps_actual, 2)}
+              </span>
+            ))}
+            {(actions?.items ?? []).slice(0, 4).map((a, i) => (
+              <span key={`action-${i}`} className="chip">
+                {String(a.action_type ?? "action")} {fmtDay(a.action_date as string | undefined)}
+              </span>
+            ))}
+            {!(earnings?.items?.length || actions?.items?.length) && (
+              <span className="text-xs text-text-tertiary">暂无可叠加事件</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChartStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border-soft bg-bg-2 p-2">
+      <div className="text-2xs text-text-tertiary">{label}</div>
+      <div className="mt-1 font-mono text-sm text-text-primary">{value}</div>
     </div>
   );
 }

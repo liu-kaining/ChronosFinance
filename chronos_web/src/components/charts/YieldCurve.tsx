@@ -4,7 +4,7 @@
  */
 
 import ReactECharts from "echarts-for-react";
-import { COLORS, echartsBase, SERIES_PALETTE } from "@/lib/theme";
+import { COLORS, echartsBase, SERIES_PALETTE, toRgba } from "@/lib/theme";
 import { fmtNum } from "@/lib/format";
 
 interface YieldPoint {
@@ -202,8 +202,8 @@ export function YieldSpread({ data, height = 180, recessionPeriods }: YieldSprea
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: `${COLORS.accent.replace("rgb(", "rgba(").replace(")", ",0.2)")}` },
-              { offset: 1, color: `${COLORS.accent.replace("rgb(", "rgba(").replace(")", ",0.02)")}` },
+              { offset: 0, color: toRgba(COLORS.accent, 0.2) },
+              { offset: 1, color: toRgba(COLORS.accent, 0.02) },
             ],
           },
         },

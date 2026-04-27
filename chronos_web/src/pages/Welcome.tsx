@@ -63,19 +63,19 @@ export function WelcomePage() {
     staleTime: 60_000,
   });
 
-  const {  market } = useQuery({
+  const { data: market } = useQuery({
     queryKey: ["welcome-market"],
     queryFn: () => api.get<MarketSnapshotResponse>(endpoints.marketSnapshot(), { params: { limit: 5 } }),
     staleTime: 30_000,
   });
 
-  const {  sectorTrends } = useQuery({
+  const { data: sectorTrends } = useQuery({
     queryKey: ["welcome-sector-trends"],
     queryFn: () => api.get<SectorTrendsResponse>(endpoints.sectorTrends()),
     staleTime: 60_000,
   });
 
-  const {  events } = useQuery({
+  const { data: events } = useQuery({
     queryKey: ["welcome-events"],
     queryFn: () => api.get<EventsStreamResponse>(endpoints.eventsStream(), { params: { limit: 20 } }),
     staleTime: 60_000,

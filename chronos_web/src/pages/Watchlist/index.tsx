@@ -286,6 +286,10 @@ function WatchlistCard({
   const { symbol, snapshot, isLoading } = item;
   const price = snapshot?.latest_price;
   const change = price?.change_pct;
+  const coverage =
+    snapshot?.synced_flags_total && snapshot.synced_flags_total > 0
+      ? snapshot.synced_flags_true / snapshot.synced_flags_total
+      : null;
 
   return (
     <div className="card group relative p-3 transition-all hover:border-accent/30">
@@ -382,6 +386,20 @@ function WatchlistCard({
           </span>
         </div>
       )}
+      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border-soft/50 pt-2 text-2xs">
+        <span className="rounded bg-bg-3 px-1.5 py-0.5 text-text-secondary">
+          覆盖 {coverage == null ? "—" : `${Math.round(coverage * 100)}%`}
+        </span>
+        <span className="rounded bg-bg-3 px-1.5 py-0.5 text-text-secondary">
+          SEC {(snapshot?.sec_by_form ?? []).reduce((sum, row) => sum + row.rows, 0)}
+        </span>
+        <span className="rounded bg-bg-3 px-1.5 py-0.5 text-text-secondary">
+          内部人90天 {snapshot?.insider_rows_90d ?? 0}
+        </span>
+        <Link to={`/symbol/${symbol}/events`} className="ml-auto text-accent hover:underline">
+          事件页
+        </Link>
+      </div>
     </div>
   );
 }

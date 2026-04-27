@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Users, FileText, Filter, TrendingUp, DollarSign, Scissors, Building2 } from "lucide-react";
 import { useState, useMemo } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { api, endpoints } from "@/lib/api";
-import type { EventsStreamResponse, DividendHistoryResponse, SplitHistoryResponse } from "@/lib/types";
-import { fmtDay, fmtCap, fmtNum } from "@/lib/format";
+import type { EventsStreamResponse } from "@/lib/types";
+import { fmtDay, fmtCap } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { COLORS } from "@/lib/theme";
 import { EmptyDataState } from "@/components/ui/EmptyDataState";
@@ -15,7 +16,7 @@ import { CalendarHeatmap } from "@/components/charts/CalendarHeatmap";
 
 type EventFilter = "all" | "earnings" | "insider" | "dividend" | "split" | "sec";
 
-const EVENT_TYPES: Array<{ key: EventFilter; label: string; icon: React.ReactNode; color: string }> = [
+const EVENT_TYPES: Array<{ key: EventFilter; label: string; icon: ReactNode; color: string }> = [
   { key: "all", label: "全部", icon: <Filter size={14} />, color: "text-text-secondary" },
   { key: "earnings", label: "财报", icon: <TrendingUp size={14} />, color: "text-accent" },
   { key: "insider", label: "内部人", icon: <Users size={14} />, color: "text-pink" },
@@ -143,11 +144,28 @@ export function EventStreamPage() {
     sec: secFilings.length,
   };
 
+  const topSymbols = useMemo(() => {
+    const counts = new Map<string, number>();
+    [...earnings, ...insiderTrades, ...secFilings].forEach((event) => {
+      if (!event.symbol) return;
+      counts.set(event.symbol, (counts.get(event.symbol) ?? 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8);
+  }, [earnings, insiderTrades, secFilings]);
+
+  const recentRisk = timelineEvents.filter((event) => {
+    const ts = new Date(event.date).getTime();
+    if (Number.isNaN(ts)) return false;
+    return ts >= Date.now() - 14 * 24 * 60 * 60 * 1000;
+  }).length;
+
   return (
     <div className="flex flex-col gap-4">
       <PageNarrative
         title="事件雷达"
-        description="发现事件驱动交易机会：财报超预期、内部人交易、分红拆股、SEC申报。"
+        description={`按事件类型、日期和标的联动下钻。当前筛选下近 14 天有 ${recentRisk} 条事件，点击日历或时间线可以继续收窄范围。`}
       />
 
       {/* Stats Cards */}
@@ -175,12 +193,49 @@ export function EventStreamPage() {
             </button>
           )}
         </div>
-        <CalendarHeatmap data={calendarData} height={160} />
+        <CalendarHeatmap data={calendarData} height={160} onDateClick={setSelectedDate} />
         {selectedDate && (
           <div className="mt-2 text-center text-sm text-text-secondary">
             已选择: <span className="font-mono text-text-primary">{selectedDate}</span>
           </div>
         )}
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="card p-3 lg:col-span-2">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+            近期风险密度
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <RiskBox label="当前筛选事件" value={timelineEvents.length} hint="受类型/日期/标的筛选影响" />
+            <RiskBox label="近14天" value={recentRisk} hint="近期需要重点跟踪" />
+            <RiskBox label="日历覆盖" value={calendarData.length} hint="有事件的交易日/自然日" />
+          </div>
+        </div>
+        <div className="card p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+            重点标的
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {topSymbols.length === 0 ? (
+              <span className="text-xs text-text-tertiary">暂无可聚合标的</span>
+            ) : (
+              topSymbols.map(([sym, count]) => (
+                <button
+                  key={sym}
+                  type="button"
+                  className={cn(
+                    "chip",
+                    symbolFilter === sym ? "border-accent/40 bg-accent/10 text-accent" : "",
+                  )}
+                  onClick={() => setSymbolFilter(sym)}
+                >
+                  {sym} <span className="text-2xs text-text-tertiary">{count}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
@@ -300,6 +355,16 @@ function StatCard({ label, value, color }: { label: string; value: number; color
     <div className="card p-3 text-center">
       <div className="text-2xs text-text-tertiary">{label}</div>
       <div className={cn("mt-1 text-2xl font-semibold", color)}>{value}</div>
+    </div>
+  );
+}
+
+function RiskBox({ label, value, hint }: { label: string; value: number; hint: string }) {
+  return (
+    <div className="rounded-lg border border-border-soft bg-bg-2/50 p-2">
+      <div className="text-2xs text-text-tertiary">{label}</div>
+      <div className="mt-1 font-mono text-lg text-text-primary">{value}</div>
+      <div className="mt-1 text-2xs text-text-tertiary">{hint}</div>
     </div>
   );
 }

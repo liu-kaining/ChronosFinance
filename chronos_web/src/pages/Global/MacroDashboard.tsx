@@ -1,17 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import ReactECharts from "echarts-for-react";
-import { LineChart, TrendingUp, TrendingDown, Activity, Globe, DollarSign } from "lucide-react";
+import { DollarSign } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { api, endpoints } from "@/lib/api";
 import type { MacroSeriesListResponse, MacroSeriesDataResponse } from "@/lib/types";
-import { echartsBase, COLORS } from "@/lib/theme";
+import { echartsBase, COLORS, toRgba } from "@/lib/theme";
 import { fmtNum, fmtDay, fmtPctSigned } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { PageNarrative } from "@/components/ui/PageNarrative";
 import { EmptyDataState } from "@/components/ui/EmptyDataState";
 import { YieldCurve, YieldSpread } from "@/components/charts/YieldCurve";
-import { Sparkline } from "@/components/ui/Sparkline";
 
 // Mock yield curve data - replace with actual API when available
 const MOCK_YIELD_CURVE = [
@@ -52,6 +51,26 @@ const MOCK_SPREAD_HISTORY = Array.from({ length: 365 }, (_, i) => {
   };
 });
 
+const SERIES_LABELS: Record<string, string> = {
+  "10Year": "10Y 国债收益率",
+  "2Year": "2Y 国债收益率",
+  "CPI": "CPI 通胀",
+  "GDP": "GDP",
+  "federalFunds": "联邦基金利率",
+  "unemploymentRate": "失业率",
+  "inflationRate": "通胀率",
+  "consumerSentiment": "消费者信心",
+  "realGDP": "实际 GDP",
+  "retailSales": "零售销售",
+};
+
+const MACRO_GROUPS = [
+  { key: "rates", label: "利率", ids: ["10Year", "2Year", "federalFunds"] },
+  { key: "inflation", label: "通胀", ids: ["CPI", "inflationRate"] },
+  { key: "growth", label: "增长", ids: ["GDP", "realGDP", "retailSales"] },
+  { key: "labor", label: "就业/信心", ids: ["unemploymentRate", "consumerSentiment"] },
+];
+
 export function MacroDashboardPage() {
   const { data: seriesList, isLoading } = useQuery({
     queryKey: ["macro-series-list"],
@@ -69,6 +88,15 @@ export function MacroDashboardPage() {
     return [...prioritized, ...rest];
   }, [series]);
 
+  const groupedSeries = useMemo(
+    () =>
+      MACRO_GROUPS.map((group) => ({
+        ...group,
+        series: prioritySeries.filter((s) => group.ids.includes(s.series_id)),
+      })).filter((group) => group.series.length > 0),
+    [prioritySeries],
+  );
+
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>("");
   useEffect(() => {
     if (!selectedSeriesId && prioritySeries[0]?.series_id) {
@@ -76,7 +104,11 @@ export function MacroDashboardPage() {
     }
   }, [prioritySeries, selectedSeriesId]);
 
-  const { data: selectedSeriesData } = useQuery({
+  const {
+    data: selectedSeriesData,
+    isFetching: isSeriesFetching,
+    isError: isSeriesError,
+  } = useQuery({
     queryKey: ["macro-data", selectedSeriesId],
     queryFn: () =>
       api.get<MacroSeriesDataResponse>(endpoints.macroSeriesById(selectedSeriesId), {
@@ -102,14 +134,6 @@ export function MacroDashboardPage() {
     };
   }, [selectedSeriesData?.items]);
 
-  // Key metrics for dashboard
-  const keyMetrics = [
-    { id: "10Year", name: "10年期国债", icon: <TrendingUp size={14} />, unit: "%" },
-    { id: "2Year", name: "2年期国债", icon: <TrendingDown size={14} />, unit: "%" },
-    { id: "CPI", name: "CPI通胀", icon: <Activity size={14} />, unit: "%" },
-    { id: "unemploymentRate", name: "失业率", icon: <Globe size={14} />, unit: "%" },
-  ];
-
   return (
     <div className="flex flex-col gap-4">
       <PageNarrative
@@ -117,39 +141,22 @@ export function MacroDashboardPage() {
         description="理解宏观环境对投资的影响：利率趋势、通胀水平、增长动能。"
       />
 
-      {/* Key Metrics Dashboard */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {keyMetrics.map((metric) => {
-          const seriesData = series.find((s) => s.series_id === metric.id);
-          const latestValue = seriesData ? 4.25 : null; // Mock value
-          const change = seriesData ? 0.1 : null; // Mock change
-
+        {MACRO_GROUPS.map((group) => {
+          const available = series.filter((s) => group.ids.includes(s.series_id));
+          const latestDate = available
+            .map((s) => s.date_max)
+            .filter(Boolean)
+            .sort()
+            .at(-1);
           return (
-            <div key={metric.id} className="card p-3">
-              <div className="flex items-center gap-1.5 text-2xs text-text-tertiary">
-                {metric.icon}
-                <span>{metric.name}</span>
+            <div key={group.key} className="card p-3">
+              <div className="text-2xs text-text-tertiary">{group.label}覆盖</div>
+              <div className="mt-1 text-xl font-semibold text-text-primary">
+                {available.length}/{group.ids.length}
               </div>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-xl font-semibold text-text-primary">
-                  {latestValue?.toFixed(2) ?? "—"}
-                  <span className="ml-0.5 text-sm">{metric.unit}</span>
-                </span>
-                {change !== null && (
-                  <span className={cn("text-xs", change > 0 ? "text-up" : "text-down")}>
-                    {change > 0 ? "+" : ""}
-                    {change.toFixed(2)}
-                  </span>
-                )}
-              </div>
-              {/* Mini sparkline */}
-              <div className="mt-2">
-                <Sparkline
-                  data={MOCK_SPREAD_HISTORY.slice(-30).map((d) => d.spread * 10)}
-                  width={120}
-                  height={24}
-                  color={change && change > 0 ? COLORS.up : COLORS.down}
-                />
+              <div className="mt-1 text-2xs text-text-tertiary">
+                最新日期：{latestDate ? fmtDay(latestDate) : "暂无"}
               </div>
             </div>
           );
@@ -214,22 +221,40 @@ export function MacroDashboardPage() {
         {prioritySeries.length === 0 ? (
           <EmptyDataState title="暂无宏观序列可选" detail="请先检查宏观序列同步状态。" />
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {prioritySeries.slice(0, 16).map((s) => (
-              <button
-                key={s.series_id}
-                type="button"
-                onClick={() => setSelectedSeriesId(s.series_id)}
-                className={cn(
-                  "chip",
-                  selectedSeriesId === s.series_id ? "border-accent/40 bg-accent/10 text-accent" : ""
-                )}
-              >
-                {s.series_id}
-              </button>
+          <div className="space-y-3">
+            {groupedSeries.map((group) => (
+              <div key={group.key}>
+                <div className="mb-1 text-2xs text-text-tertiary">{group.label}</div>
+                <div className="flex flex-wrap gap-2">
+                  {group.series.map((s) => (
+                    <button
+                      key={s.series_id}
+                      type="button"
+                      onClick={() => setSelectedSeriesId(s.series_id)}
+                      className={cn(
+                        "chip max-w-full px-2.5 py-1 text-xs",
+                        selectedSeriesId === s.series_id
+                          ? "border-accent/50 bg-accent/15 text-accent"
+                          : "border-border-soft bg-bg-2/80 text-text-secondary",
+                      )}
+                      title={`${SERIES_LABELS[s.series_id] ?? s.series_id} (${s.rows} 点，${fmtDay(s.date_min)} 到 ${fmtDay(s.date_max)})`}
+                    >
+                      <span className="truncate">
+                        {SERIES_LABELS[s.series_id] ?? s.series_id}
+                      </span>
+                      <span className="ml-1 text-2xs text-text-tertiary">{s.rows}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}
+        <div className="mt-2 text-2xs text-text-tertiary">
+          当前：{SERIES_LABELS[selectedSeriesId] ?? (selectedSeriesId || "—")}
+          {isSeriesFetching ? "（加载中）" : ""}
+          {isSeriesError ? "（加载失败）" : ""}
+        </div>
       </div>
 
       {/* Conclusion Card */}
@@ -338,8 +363,8 @@ function MacroLineChart({ data }: { data: Array<{ date: string; value: number | 
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: `${COLORS.accent.replace("rgb(", "rgba(").replace(")", ",0.25)")}` },
-              { offset: 1, color: `${COLORS.accent.replace("rgb(", "rgba(").replace(")", ",0.02)")}` },
+              { offset: 0, color: toRgba(COLORS.accent, 0.25) },
+              { offset: 1, color: toRgba(COLORS.accent, 0.02) },
             ],
           },
         },
