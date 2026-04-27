@@ -104,9 +104,9 @@ export function WelcomePage() {
       title: `${e.symbol} 财报`,
       description: e.company_name || undefined,
       symbol: e.symbol,
-      value: e.eps_actual ? `EPS ${e.eps_actual.toFixed(2)}` : undefined,
+      value: e.eps_actual != null ? `EPS ${e.eps_actual.toFixed(2)}` : undefined,
       change:
-        e.eps_estimated && e.eps_actual
+        e.eps_estimated != null && e.eps_estimated !== 0 && e.eps_actual != null
           ? ((e.eps_actual - e.eps_estimated) / Math.abs(e.eps_estimated)) * 100
           : undefined,
     })) ?? []),

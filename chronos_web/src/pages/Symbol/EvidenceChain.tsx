@@ -204,7 +204,7 @@ export function EvidenceChainPage() {
 
     earnings?.items?.forEach((e, i) => {
       const surprise =
-        e.eps_estimated && e.eps_actual
+        e.eps_estimated != null && e.eps_estimated !== 0 && e.eps_actual != null
           ? ((e.eps_actual - e.eps_estimated) / Math.abs(e.eps_estimated)) * 100
           : null;
       events.push({
@@ -212,7 +212,7 @@ export function EvidenceChainPage() {
         date: e.date,
         type: "earnings",
         title: "财报发布",
-        description: `EPS: ${fmtNum(e.eps_actual, 2)} ${surprise ? `(${surprise > 0 ? "+" : ""}${surprise.toFixed(1)}%)` : ""}`,
+        description: `EPS: ${fmtNum(e.eps_actual, 2)} ${surprise !== null ? `(${surprise > 0 ? "+" : ""}${surprise.toFixed(1)}%)` : ""}`,
         symbol: sym,
         change: surprise ?? undefined,
       });
@@ -536,7 +536,7 @@ export function EvidenceChainPage() {
                         (valuation.upside_pct || 0) > 0 ? "text-up" : (valuation.upside_pct || 0) < 0 ? "text-down" : "text-text-primary"
                       )}
                     >
-                      {valuation.upside_pct ? `${valuation.upside_pct > 0 ? "+" : ""}${valuation.upside_pct.toFixed(1)}%` : "—"}
+                      {valuation.upside_pct != null ? `${valuation.upside_pct > 0 ? "+" : ""}${valuation.upside_pct.toFixed(1)}%` : "—"}
                     </span>
                   </div>
                 </div>
