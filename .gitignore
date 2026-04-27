@@ -14,7 +14,10 @@ dist/
 downloads/
 eggs/
 .eggs/
+# Keep Python packaging ignores, but allow frontend source libs.
 lib/
+!chronos_web/src/lib/
+!chronos_web/src/lib/**
 lib64/
 parts/
 sdist/
