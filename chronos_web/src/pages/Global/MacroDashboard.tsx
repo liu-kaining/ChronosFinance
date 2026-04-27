@@ -53,7 +53,7 @@ const MOCK_SPREAD_HISTORY = Array.from({ length: 365 }, (_, i) => {
 });
 
 export function MacroDashboardPage() {
-  const {  seriesList, isLoading } = useQuery({
+  const { data: seriesList, isLoading } = useQuery({
     queryKey: ["macro-series-list"],
     queryFn: () => api.get<MacroSeriesListResponse>(endpoints.macroSeries()),
     staleTime: 10 * 60_000,
@@ -76,7 +76,7 @@ export function MacroDashboardPage() {
     }
   }, [prioritySeries, selectedSeriesId]);
 
-  const {  selectedSeriesData } = useQuery({
+  const { data: selectedSeriesData } = useQuery({
     queryKey: ["macro-data", selectedSeriesId],
     queryFn: () =>
       api.get<MacroSeriesDataResponse>(endpoints.macroSeriesById(selectedSeriesId), {
@@ -175,7 +175,7 @@ export function MacroDashboardPage() {
 
         <YieldCurve
           current={MOCK_YIELD_CURVE}
-          comparison1={{  MOCK_YIELD_1M_AGO, label: "1月前" }}
+          comparison1={{ data: MOCK_YIELD_1M_AGO, label: "1月前" }}
           height={240}
         />
 
@@ -200,7 +200,7 @@ export function MacroDashboardPage() {
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
           10Y-2Y 利差历史（经济衰退预警指标）
         </div>
-        <YieldSpread history={MOCK_SPREAD_HISTORY} height={180} />
+        <YieldSpread data={MOCK_SPREAD_HISTORY} height={180} />
         <div className="mt-2 text-2xs text-text-tertiary">
           利差为负（曲线倒挂）往往预示经济衰退风险。当前利差处于历史低位。
         </div>

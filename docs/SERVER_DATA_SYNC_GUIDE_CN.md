@@ -71,6 +71,43 @@ bash scripts/backup_db.sh --data-only
 ls -lht backups/*.dump | head
 ```
 
+### 1.5 备份到 R2（固定文件名，仅数据变化时覆盖）
+
+项目已提供脚本：`scripts/backup_to_r2_latest.sh`。
+
+行为说明：
+
+- 本地先生成固定文件名备份：`backups/chronos_finance_latest.dump`
+- 计算本地 SHA256
+- 读取 R2 manifest 对象 metadata 中的 `sha256`
+- 若相同：跳过上传（不改动 R2）
+- 若不同：切分为小文件分片上传（提高成功率），并覆盖 manifest
+
+建议安装 aws cli（可选）。如果未安装，脚本会自动使用 docker 内的 `amazon/aws-cli` 镜像上传：
+
+```bash
+aws --version
+```
+
+执行备份并按需上传：
+
+```bash
+cd ~/github/ChronosFinance
+bash scripts/backup_to_r2_latest.sh
+```
+
+可选：调整分片大小（默认 128MB）：
+
+```bash
+R2_SPLIT_CHUNK_MB=64 bash scripts/backup_to_r2_latest.sh
+```
+
+可选：自定义 R2 对象 key（仍然固定）：
+
+```bash
+R2_OBJECT_KEY="db/chronos_finance_latest.dump" bash scripts/backup_to_r2_latest.sh
+```
+
 ---
 
 ## 2) 如何导入数据（恢复）
@@ -105,6 +142,41 @@ bash scripts/restore_db.sh backups/chronos_finance_YYYYMMDD_HHMMSS.dump --clean 
 ```bash
 curl -s "http://localhost:8003/api/v1/stats/overview" | python3 -m json.tool
 curl -s "http://localhost:8003/api/v1/stats/sync-progress" | python3 -m json.tool
+```
+
+### 2.5 从 R2 分片 manifest 恢复（推荐）
+
+项目已提供脚本：`scripts/restore_from_r2_manifest.sh`。  
+该脚本会：
+
+- 下载 manifest（固定 key）
+- 下载所有分片并校验分片 SHA
+- 拼接为本地 dump 并校验整包 SHA
+- 默认调用 `scripts/restore_db.sh` 完成恢复
+
+直接恢复：
+
+```bash
+cd ~/github/ChronosFinance
+bash scripts/restore_from_r2_manifest.sh
+```
+
+只下载不恢复：
+
+```bash
+bash scripts/restore_from_r2_manifest.sh --download-only
+```
+
+指定输出文件：
+
+```bash
+bash scripts/restore_from_r2_manifest.sh --output backups/chronos_from_r2.dump
+```
+
+自动恢复且跳过确认（谨慎）：
+
+```bash
+bash scripts/restore_from_r2_manifest.sh --restore --no-confirm
 ```
 
 ---
@@ -202,6 +274,12 @@ tail -f ~/github/ChronosFinance/chronos_finance/ingest_scheduler.log
 ```
 
 > 两者并存是安全的：增量任务是幂等 upsert 设计，调度器本身也有状态控制。
+
+如果你还要每天自动备份到 R2（固定文件名，仅变更才覆盖），再加一条：
+
+```cron
+20 22 * * * cd ~/github/ChronosFinance && bash scripts/backup_to_r2_latest.sh >> ~/github/ChronosFinance/backups/backup_to_r2.log 2>&1
+```
 
 ---
 

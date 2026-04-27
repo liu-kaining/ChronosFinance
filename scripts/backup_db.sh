@@ -97,8 +97,9 @@ TEMP_FILE="${BACKUP_FILE}.tmp"
 if docker-compose exec -T db pg_dump "${PG_OPTS[@]}" > "$TEMP_FILE"; then
     mv "$TEMP_FILE" "$BACKUP_FILE"
 
-    # Validate dump readability; fail fast if file is corrupted/incomplete.
-    if ! pg_restore -l "$BACKUP_FILE" >/dev/null 2>&1; then
+    # Validate dump readability using the db container's pg_restore
+    # to avoid host/client version mismatch issues.
+    if ! docker-compose exec -T db pg_restore -l >/dev/null 2>&1 < "$BACKUP_FILE"; then
         rm -f "$BACKUP_FILE"
         die "Backup created but failed pg_restore list validation. File removed."
     fi
