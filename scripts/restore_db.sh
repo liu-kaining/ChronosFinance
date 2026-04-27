@@ -88,7 +88,7 @@ if ! "${DC[@]}" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "SE
 fi
 
 # Warn if APIs are running (service names in this repo are api-read/api-write).
-running_apis="$("${DC[@]}" ps --status running --services 2>/dev/null | rg '^(api-read|api-write)$' || true)"
+running_apis="$("${DC[@]}" ps --status running --services 2>/dev/null | grep -E '^(api-read|api-write)$' || true)"
 if [[ -n "$running_apis" ]]; then
     warn "API services are running ($(echo "$running_apis" | tr '\n' ' ')). Recommend stopping them before restore:"
     warn "  docker compose stop api-read api-write"
