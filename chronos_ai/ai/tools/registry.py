@@ -18,13 +18,18 @@ from .definitions import TOOLS, get_tool_by_name
 class ToolRegistry:
     """Registry for executing tools via Chronos Finance API."""
 
-    def __init__(self) -> None:
-        self.base_url = settings.CHRONOS_API_BASE
+    def __init__(self, base_url: str | None = None) -> None:
+        self.base_url = base_url or settings.CHRONOS_API_BASE
         self.tools = {t.name: t for t in TOOLS}
+        self._client = httpx.AsyncClient(timeout=30.0)
 
     def list_tools(self):
         """Return all available tool definitions."""
         return list(self.tools.values())
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        await self._client.aclose()
 
     async def execute(self, name: str, arguments: dict[str, Any]) -> Any:
         """Execute a tool by name with given arguments.
@@ -60,18 +65,27 @@ class ToolRegistry:
                 return await self._get_macro(**arguments)
             elif name == "compute":
                 return await self._compute(**arguments)
+            elif name == "get_dividends":
+                return await self._get_dividends(**arguments)
+            elif name == "get_splits":
+                return await self._get_splits(**arguments)
+            elif name == "get_market_cap":
+                return await self._get_market_cap(**arguments)
+            elif name == "get_valuation":
+                return await self._get_valuation(**arguments)
+            elif name == "get_market_snapshot":
+                return await self._get_market_snapshot(**arguments)
             else:
                 return {"error": f"Tool not implemented: {name}"}
         except Exception as e:
             return {"error": str(e)}
 
     async def _fetch(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        """Fetch data from Chronos API."""
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            url = f"{self.base_url}{path}"
-            resp = await client.get(url, params=params)
-            resp.raise_for_status()
-            return resp.json()
+        """Fetch data from Chronos API using persistent client."""
+        url = f"{self.base_url}{path}"
+        resp = await self._client.get(url, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     async def _get_price(self, symbol: str, limit: int = 30) -> Any:
         return await self._fetch(
@@ -86,13 +100,13 @@ class ToolRegistry:
         period: str = "annual",
         limit: int = 5,
     ) -> Any:
-        # Category mapping
+        # Category mapping: combine category with period
         category_map = {
-            "income_statement": "income_statement_annual",
-            "balance_sheet": "balance_sheet_annual",
-            "cash_flow_statement": "cash_flow_statement_annual",
+            "income_statement": f"income_statement_{period}",
+            "balance_sheet": f"balance_sheet_{period}",
+            "cash_flow_statement": f"cash_flow_statement_{period}",
         }
-        api_category = category_map.get(category, f"{category}_annual")
+        api_category = category_map.get(category, f"{category}_{period}")
         return await self._fetch(
             f"/api/v1/library/symbols/{symbol.upper()}/static",
             {"category": api_category, "period": period, "limit": limit},
@@ -164,14 +178,47 @@ class ToolRegistry:
         except Exception as e:
             return {"error": f"Failed to compute: {e}"}
 
+    async def _get_dividends(self, symbol: str, limit: int = 20) -> Any:
+        return await self._fetch(
+            f"/api/v1/library/symbols/{symbol.upper()}/dividends",
+            {"limit": limit},
+        )
+
+    async def _get_splits(self, symbol: str, limit: int = 20) -> Any:
+        return await self._fetch(
+            f"/api/v1/library/symbols/{symbol.upper()}/splits",
+            {"limit": limit},
+        )
+
+    async def _get_market_cap(self, symbol: str, limit: int = 30) -> Any:
+        return await self._fetch(
+            f"/api/v1/library/symbols/{symbol.upper()}/market-cap-history",
+            {"limit": limit},
+        )
+
+    async def _get_valuation(self, symbol: str) -> Any:
+        return await self._fetch(
+            f"/api/v1/library/symbols/{symbol.upper()}/valuation",
+        )
+
+    async def _get_market_snapshot(self, limit: int = 10) -> Any:
+        return await self._fetch(
+            "/api/v1/data/market/snapshot",
+            {"limit": limit},
+        )
+
 
 # Singleton instance
 _registry: ToolRegistry | None = None
 
 
-def get_tool_registry() -> ToolRegistry:
+def get_registry() -> ToolRegistry:
     """Get the tool registry singleton."""
     global _registry
     if _registry is None:
         _registry = ToolRegistry()
     return _registry
+
+
+# Backwards-compatible alias
+get_tool_registry = get_registry

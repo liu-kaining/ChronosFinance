@@ -52,32 +52,91 @@ export interface StaticCategoriesResponse {
   [key: string]: unknown;
 }
 
+export interface EarningsItem {
+  date: string;
+  fiscal_period_end?: string | null;
+  eps_estimated?: number | null;
+  eps_actual?: number | null;
+  revenue_estimated?: number | null;
+  revenue_actual?: number | null;
+  [key: string]: unknown;
+}
+
+export interface InsiderItem {
+  filing_date?: string | null;
+  transaction_date?: string | null;
+  reporting_name?: string | null;
+  transaction_type?: string | null;
+  securities_transacted?: number | null;
+  security_title?: string | null;
+  [key: string]: unknown;
+}
+
+export interface CorporateActionItem {
+  date: string;
+  action_type?: string | null;
+  description?: string | null;
+  [key: string]: unknown;
+}
+
+export interface AnalystEstimateItem {
+  date: string;
+  kind?: string | null;
+  estimated_revenue?: number | null;
+  estimated_eps?: number | null;
+  target_price?: number | null;
+  analyst_name?: string | null;
+  [key: string]: unknown;
+}
+
+export interface SecFilingItem {
+  form_type: string;
+  filing_date?: string | null;
+  fiscal_year?: number | null;
+  fiscal_period?: string | null;
+  description?: string | null;
+  [key: string]: unknown;
+}
+
+export interface StaticSeriesItem {
+  fiscal_year?: number | null;
+  fiscal_period?: string | null;
+  [key: string]: unknown;
+}
+
+export interface MacroSeriesDataItem {
+  date: string;
+  value?: number | null;
+  raw_payload?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export interface StaticSeriesResponse {
-  items: Record<string, unknown>[];
+  items: StaticSeriesItem[];
   rows: number;
   [key: string]: unknown;
 }
 
 export interface EarningsSeriesResponse {
-  items: Record<string, unknown>[];
+  items: EarningsItem[];
   rows: number;
   [key: string]: unknown;
 }
 
 export interface CorporateActionsResponse {
-  items: Record<string, unknown>[];
+  items: CorporateActionItem[];
   rows: number;
   [key: string]: unknown;
 }
 
 export interface InsiderSeriesResponse {
-  items: Record<string, unknown>[];
+  items: InsiderItem[];
   rows: number;
   [key: string]: unknown;
 }
 
 export interface AnalystEstimatesResponse {
-  items: Record<string, unknown>[];
+  items: AnalystEstimateItem[];
   rows: number;
   [key: string]: unknown;
 }
@@ -129,19 +188,24 @@ export interface MarketCapHistoryResponse {
 }
 
 export interface SecFilingsListResponse {
-  items: Record<string, unknown>[];
+  items: SecFilingItem[];
   rows: number;
   [key: string]: unknown;
 }
 
 export interface MacroSeriesListResponse {
-  items: Array<{ series_id: string; [key: string]: unknown }>;
-  rows: number;
+  series: Array<{
+    series_id: string;
+    rows: number;
+    date_min?: string | null;
+    date_max?: string | null;
+  }>;
   [key: string]: unknown;
 }
 
 export interface MacroSeriesDataResponse {
-  items: Record<string, unknown>[];
+  series_id: string;
+  items: MacroSeriesDataItem[];
   rows: number;
   [key: string]: unknown;
 }
@@ -276,9 +340,6 @@ export interface SymbolSnapshotResponse {
     prev_close?: number;
     change_pct?: number;
     volume?: number;
-    pe_ratio?: number;
-    fifty_two_week_low?: number;
-    fifty_two_week_high?: number;
   };
   latest_earnings?: {
     date?: string;
@@ -335,4 +396,34 @@ export interface IngestHealthResponse {
   failed: number;
   ok: number;
   skipped: number;
+}
+
+export interface YieldCurvePoint {
+  tenor: string;
+  yield_rate?: number | null;
+}
+
+export interface YieldCurveResponse {
+  date: string;
+  curves: YieldCurvePoint[];
+}
+
+export interface YieldCurveHistoryItem {
+  date: string;
+  curves: YieldCurvePoint[];
+}
+
+export interface YieldCurveHistoryResponse {
+  items: YieldCurveHistoryItem[];
+}
+
+export interface YieldSpreadPoint {
+  date: string;
+  spread?: number | null;
+}
+
+export interface YieldSpreadResponse {
+  tenor1: string;
+  tenor2: string;
+  items: YieldSpreadPoint[];
 }

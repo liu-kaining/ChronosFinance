@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -43,13 +44,13 @@ async def chat_endpoint(req: ChatRequest) -> StreamingResponse:
     # Convert to internal Message format
     messages = [Message(role=m.role, content=m.content) for m in req.messages]
 
-    # Add context if provided
+    # Inject context as a system message at the beginning
     if req.context:
-        context_str = f"\n\nContext: {req.context}"
-        messages[-1] = Message(
-            role=messages[-1].role,
-            content=messages[-1].content + context_str if isinstance(messages[-1].content, str) else messages[-1].content,
+        context_msg = Message(
+            role="system",
+            content=f"Current context: {json.dumps(req.context)}",
         )
+        messages.insert(0, context_msg)
 
     agent = get_agent()
 
@@ -72,12 +73,10 @@ async def chat_endpoint(req: ChatRequest) -> StreamingResponse:
 async def list_models() -> dict[str, Any]:
     """Return information about the configured LLM."""
     from ai.llm import get_llm_provider
+    from ai.core.config import settings
 
     provider = get_llm_provider()
     return {
         "provider": settings.LLM_PROVIDER,
         "model": provider.get_model_name(),
     }
-
-
-from ai.core.config import settings  # Import at end to avoid circular import

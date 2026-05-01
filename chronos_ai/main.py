@@ -50,3 +50,6 @@ async def startup() -> None:
 @app.on_event("shutdown")
 async def shutdown() -> None:
     logger.info("Chronos AI shutting down")
+    from ai.tools.registry import get_registry
+    registry = get_registry()
+    await registry.close()

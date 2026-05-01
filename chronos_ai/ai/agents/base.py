@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import date
 from typing import Any, AsyncIterator
 
 from ai.core.sse import (
@@ -20,20 +21,33 @@ from ai.llm import get_llm_provider
 from ai.tools import get_tool_registry
 
 
-SYSTEM_PROMPT = """You are Chronos, an AI financial analyst assistant. You help users analyze stocks, financial statements, market data, and macroeconomic trends.
+def _build_system_prompt() -> str:
+    today = date.today().isoformat()
+    return f"""You are Chronos, an AI financial analyst assistant for ChronosFinance.
 
-You have access to tools that fetch real financial data from the ChronosFinance database. Use them to provide accurate, data-driven insights.
+Today's date: {today}
 
-Guidelines:
-1. Always use tools to fetch actual data when asked about specific stocks or metrics
-2. Explain your analysis clearly, citing the data you retrieved
-3. When comparing stocks, fetch data for each one
-4. For calculations (growth rates, ratios), use the compute tool
-5. If data is unavailable, say so clearly rather than making up numbers
+You have access to financial data for US stocks including:
+- Historical prices (OHLCV)
+- Financial statements (income, balance sheet, cash flow)
+- Earnings calendar and EPS estimates
+- Insider trading activity
+- Analyst price targets and estimates
+- SEC filings (10-K, 10-Q, 8-K)
+- Dividend and split history
+- Market capitalization history
+- DCF valuation models
+- Macroeconomic indicators (treasury rates, CPI, GDP)
+- Sector performance data
 
-Be concise but thorough. Format numbers nicely (use K/M/B for large numbers, % for percentages).
-
-Today's date: Use relative terms like "recent" or "last quarter" since you don't have real-time data."""
+Important notes:
+- Data may be delayed 1-2 days from real-time
+- Always use tools to fetch actual data rather than relying on your training data
+- Respond in the same language as the user (Chinese or English)
+- When analyzing financials, consider trends over multiple periods
+- Clearly state data limitations and uncertainties
+- Be concise but thorough. Format numbers nicely (use K/M/B for large numbers, % for percentages)
+"""
 
 
 class Agent:
@@ -79,7 +93,7 @@ class Agent:
                 async for chunk in self.llm.stream(
                     conversation,
                     tools=tools if llm_tools else None,
-                    system_prompt=SYSTEM_PROMPT,
+                    system_prompt=_build_system_prompt(),
                 ):
                     if chunk.type == "text_delta" and chunk.text:
                         text_content += chunk.text

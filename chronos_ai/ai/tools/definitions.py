@@ -166,6 +166,74 @@ COMPUTE_SCHEMA: dict[str, Any] = {
     "required": ["expression"],
 }
 
+DIVIDENDS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "symbol": {
+            "type": "string",
+            "description": "Stock ticker symbol",
+        },
+        "limit": {
+            "type": "integer",
+            "default": 20,
+        },
+    },
+    "required": ["symbol"],
+}
+
+SPLITS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "symbol": {
+            "type": "string",
+            "description": "Stock ticker symbol",
+        },
+        "limit": {
+            "type": "integer",
+            "default": 20,
+        },
+    },
+    "required": ["symbol"],
+}
+
+MARKET_CAP_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "symbol": {
+            "type": "string",
+            "description": "Stock ticker symbol",
+        },
+        "limit": {
+            "type": "integer",
+            "default": 30,
+        },
+    },
+    "required": ["symbol"],
+}
+
+VALUATION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "symbol": {
+            "type": "string",
+            "description": "Stock ticker symbol",
+        },
+    },
+    "required": ["symbol"],
+}
+
+MARKET_SNAPSHOT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "limit": {
+            "type": "integer",
+            "description": "Number of top movers to return",
+            "default": 10,
+        },
+    },
+    "required": [],
+}
+
 
 # Tool definitions
 
@@ -219,6 +287,31 @@ TOOLS: list[ToolDefinition] = [
         name="compute",
         description="Evaluate a mathematical expression. Use this for calculations like compound growth, ratios, or percentages.",
         input_schema=COMPUTE_SCHEMA,
+    ),
+    ToolDefinition(
+        name="get_dividends",
+        description="Get dividend history for a stock. Use this to analyze dividend yield, payout frequency, and dividend growth.",
+        input_schema=DIVIDENDS_SCHEMA,
+    ),
+    ToolDefinition(
+        name="get_splits",
+        description="Get stock split history for a stock. Use this to understand share count changes and reverse splits.",
+        input_schema=SPLITS_SCHEMA,
+    ),
+    ToolDefinition(
+        name="get_market_cap",
+        description="Get historical market capitalization for a stock. Use this to analyze valuation trends over time.",
+        input_schema=MARKET_CAP_SCHEMA,
+    ),
+    ToolDefinition(
+        name="get_valuation",
+        description="Get DCF (Discounted Cash Flow) valuation model for a stock. Use this to assess intrinsic value.",
+        input_schema=VALUATION_SCHEMA,
+    ),
+    ToolDefinition(
+        name="get_market_snapshot",
+        description="Get a market-wide snapshot with top gainers, losers, most active stocks, and sector breakdown.",
+        input_schema=MARKET_SNAPSHOT_SCHEMA,
     ),
 ]
 

@@ -4,52 +4,18 @@ import { DollarSign } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { api, endpoints } from "@/lib/api";
-import type { MacroSeriesListResponse, MacroSeriesDataResponse } from "@/lib/types";
+import type {
+  MacroSeriesListResponse,
+  MacroSeriesDataResponse,
+  YieldCurveResponse,
+  YieldSpreadResponse,
+} from "@/lib/types";
 import { echartsBase, COLORS, toRgba } from "@/lib/theme";
 import { fmtNum, fmtDay, fmtPctSigned } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { PageNarrative } from "@/components/ui/PageNarrative";
 import { EmptyDataState } from "@/components/ui/EmptyDataState";
 import { YieldCurve, YieldSpread } from "@/components/charts/YieldCurve";
-
-// Mock yield curve data - replace with actual API when available
-const MOCK_YIELD_CURVE = [
-  { tenor: "1M", yield: 5.25 },
-  { tenor: "3M", yield: 5.32 },
-  { tenor: "6M", yield: 5.28 },
-  { tenor: "1Y", yield: 5.15 },
-  { tenor: "2Y", yield: 4.85 },
-  { tenor: "3Y", yield: 4.65 },
-  { tenor: "5Y", yield: 4.45 },
-  { tenor: "7Y", yield: 4.35 },
-  { tenor: "10Y", yield: 4.25 },
-  { tenor: "20Y", yield: 4.45 },
-  { tenor: "30Y", yield: 4.35 },
-];
-
-const MOCK_YIELD_1M_AGO = [
-  { tenor: "1M", yield: 5.15 },
-  { tenor: "3M", yield: 5.22 },
-  { tenor: "6M", yield: 5.18 },
-  { tenor: "1Y", yield: 5.05 },
-  { tenor: "2Y", yield: 4.75 },
-  { tenor: "3Y", yield: 4.55 },
-  { tenor: "5Y", yield: 4.35 },
-  { tenor: "7Y", yield: 4.25 },
-  { tenor: "10Y", yield: 4.15 },
-  { tenor: "20Y", yield: 4.35 },
-  { tenor: "30Y", yield: 4.25 },
-];
-
-const MOCK_SPREAD_HISTORY = Array.from({ length: 365 }, (_, i) => {
-  const date = new Date();
-  date.setDate(date.getDate() - (365 - i));
-  const baseSpread = 0.4 + Math.sin(i / 30) * 0.2;
-  return {
-    date: date.toISOString().split("T")[0],
-    spread: baseSpread + (Math.random() - 0.5) * 0.1,
-  };
-});
 
 const SERIES_LABELS: Record<string, string> = {
   "10Year": "10Y 国债收益率",
@@ -78,7 +44,27 @@ export function MacroDashboardPage() {
     staleTime: 10 * 60_000,
   });
 
+  const { data: yieldCurve } = useQuery({
+    queryKey: ["yieldCurve"],
+    queryFn: () => api.get<YieldCurveResponse>(endpoints.yieldCurve()),
+    staleTime: 60_000,
+  });
+
+  const { data: yieldSpread } = useQuery({
+    queryKey: ["yieldSpread"],
+    queryFn: () => api.get<YieldSpreadResponse>(endpoints.yieldSpread(), {
+      params: { tenor1: "10Y", tenor2: "2Y", days: 365 },
+    }),
+    staleTime: 60_000,
+  });
+
   const series = seriesList?.series ?? [];
+
+  // Convert yield curve data for the chart
+  const currentCurveData = yieldCurve?.curves?.map((c) => ({
+    tenor: c.tenor,
+    yield: c.yield_rate ?? 0,
+  })) ?? [];
 
   const prioritySeries = useMemo(() => {
     const ids = ["10Year", "2Year", "CPI", "GDP", "federalFunds", "unemploymentRate", "inflationRate"];
@@ -181,23 +167,45 @@ export function MacroDashboardPage() {
         </div>
 
         <YieldCurve
-          current={MOCK_YIELD_CURVE}
-          comparison1={{ data: MOCK_YIELD_1M_AGO, label: "1月前" }}
+          current={currentCurveData}
           height={240}
         />
 
         <div className="mt-3 grid grid-cols-3 gap-2 text-center text-2xs">
           <div className="rounded-md bg-bg-2 p-2">
             <div className="text-text-tertiary">10Y-2Y 利差</div>
-            <div className="mt-0.5 font-mono text-sm text-text-primary">-0.60%</div>
+            <div className="mt-0.5 font-mono text-sm text-text-primary">
+              {yieldCurve ? (() => {
+                const y10 = yieldCurve.curves?.find((c) => c.tenor === "10Y")?.yield_rate;
+                const y2 = yieldCurve.curves?.find((c) => c.tenor === "2Y")?.yield_rate;
+                if (y10 != null && y2 != null) {
+                  const spread = y10 - y2;
+                  return `${spread >= 0 ? "+" : ""}${spread.toFixed(2)}%`;
+                }
+                return "—";
+              })() : "—"}
+            </div>
           </div>
           <div className="rounded-md bg-bg-2 p-2">
             <div className="text-text-tertiary">曲线形态</div>
-            <div className="mt-0.5 font-mono text-sm text-down">倒挂</div>
+            <div className="mt-0.5 font-mono text-sm">
+              {yieldCurve ? (() => {
+                const y10 = yieldCurve.curves?.find((c) => c.tenor === "10Y")?.yield_rate;
+                const y2 = yieldCurve.curves?.find((c) => c.tenor === "2Y")?.yield_rate;
+                if (y10 != null && y2 != null) {
+                  return y10 < y2
+                    ? <span className="text-down">倒挂</span>
+                    : <span className="text-up">正常</span>;
+                }
+                return "—";
+              })() : "—"}
+            </div>
           </div>
           <div className="rounded-md bg-bg-2 p-2">
-            <div className="text-text-tertiary">1月变化</div>
-            <div className="mt-0.5 font-mono text-sm text-up">+10bp</div>
+            <div className="text-text-tertiary">数据日期</div>
+            <div className="mt-0.5 font-mono text-sm text-text-primary">
+              {yieldCurve?.date ? fmtDay(yieldCurve.date) : "—"}
+            </div>
           </div>
         </div>
       </div>
@@ -205,9 +213,15 @@ export function MacroDashboardPage() {
       {/* Yield Spread History */}
       <div className="card p-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-          10Y-2Y 利差历史（经济衰退预警指标）
+          {yieldSpread?.tenor1 ?? "10Y"}-{yieldSpread?.tenor2 ?? "2Y"} 利差历史（经济衰退预警指标）
         </div>
-        <YieldSpread data={MOCK_SPREAD_HISTORY} height={180} />
+        <YieldSpread
+          data={yieldSpread?.items?.map((item) => ({
+            date: item.date,
+            spread: item.spread ?? 0,
+          })) ?? []}
+          height={180}
+        />
         <div className="mt-2 text-2xs text-text-tertiary">
           利差为负（曲线倒挂）往往预示经济衰退风险。当前利差处于历史低位。
         </div>

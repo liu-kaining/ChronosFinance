@@ -2,13 +2,13 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import String, and_, cast, func, select, text
+from sqlalchemy import String, and_, case, cast, func, select, text
 
 from fastapi import APIRouter, HTTPException, Query
 
 from app.core.database import async_session_factory
 from app.models.alpha import AnalystEstimate, InsiderTrade, SECFile
-from app.models.macro import MacroEconomic
+from app.models.macro import MacroEconomic, TreasuryRateWide
 from app.models.market import CorporateAction, DailyPrice, EarningsCalendar
 from app.models.sector import SectorPerformanceSeries
 from app.models.static_financials import StaticFinancials
@@ -57,6 +57,12 @@ from app.schemas.insight import (
     UniverseCounts,
     UniverseListResponse,
     UniverseRow,
+    YieldCurvePoint,
+    YieldCurveResponse,
+    YieldCurveHistoryItem,
+    YieldCurveHistoryResponse,
+    YieldSpreadPoint,
+    YieldSpreadResponse,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["data"])
@@ -200,50 +206,69 @@ async def table_inventory() -> TableInventoryResponse:
     summary="How many active symbols have each *_synced flag true",
 )
 async def sync_progress() -> SyncProgressResponse:
-    active_cond = StockUniverse.is_actively_trading.is_(True)
-
-    def both(flag):
-        return and_(active_cond, flag.is_(True))
+    """Optimized: single SQL query with conditional aggregation instead of N+1."""
+    def _flag_sum(col):
+        return func.sum(case((col.is_(True), 1), else_=0)).label(col.name)
 
     async with async_session_factory() as session:
-        active = await session.scalar(
-            select(func.count()).select_from(StockUniverse).where(active_cond)
-        )
-        inactive = await session.scalar(
-            select(func.count())
-            .select_from(StockUniverse)
-            .where(StockUniverse.is_actively_trading.is_(False))
-        )
+        # Single query for all active counts
+        active_stmt = select(
+            func.count().label("total"),
+            _flag_sum(StockUniverse.income_synced),
+            _flag_sum(StockUniverse.balance_synced),
+            _flag_sum(StockUniverse.cashflow_synced),
+            _flag_sum(StockUniverse.ratios_synced),
+            _flag_sum(StockUniverse.metrics_synced),
+            _flag_sum(StockUniverse.scores_synced),
+            _flag_sum(StockUniverse.ev_synced),
+            _flag_sum(StockUniverse.compensation_synced),
+            _flag_sum(StockUniverse.segments_synced),
+            _flag_sum(StockUniverse.peers_synced),
+            _flag_sum(StockUniverse.prices_synced),
+            _flag_sum(StockUniverse.actions_synced),
+            _flag_sum(StockUniverse.earnings_synced),
+            _flag_sum(StockUniverse.insider_synced),
+            _flag_sum(StockUniverse.estimates_synced),
+            _flag_sum(StockUniverse.filings_synced),
+            _flag_sum(StockUniverse.float_synced),
+            _flag_sum(StockUniverse.market_cap_synced),
+            _flag_sum(StockUniverse.dcf_synced),
+        ).where(StockUniverse.is_actively_trading.is_(True))
 
-        async def ac(flag) -> int:
-            n = await session.scalar(
-                select(func.count()).select_from(StockUniverse).where(both(flag))
+        row = (await session.execute(active_stmt)).one()
+        active_count = int(row[0] or 0)
+
+        inactive_count = int(
+            await session.scalar(
+                select(func.count())
+                .select_from(StockUniverse)
+                .where(StockUniverse.is_actively_trading.is_(False))
             )
-            return int(n or 0)
+            or 0
+        )
 
         return SyncProgressResponse(
-            active_symbols=int(active or 0),
-            inactive_symbols=int(inactive or 0),
-            active_with_income_synced=await ac(StockUniverse.income_synced),
-            active_with_balance_synced=await ac(StockUniverse.balance_synced),
-            active_with_cashflow_synced=await ac(StockUniverse.cashflow_synced),
-            active_with_ratios_synced=await ac(StockUniverse.ratios_synced),
-            active_with_metrics_synced=await ac(StockUniverse.metrics_synced),
-            active_with_scores_synced=await ac(StockUniverse.scores_synced),
-            active_with_ev_synced=await ac(StockUniverse.ev_synced),
-            active_with_compensation_synced=await ac(StockUniverse.compensation_synced),
-            active_with_segments_synced=await ac(StockUniverse.segments_synced),
-            active_with_peers_synced=await ac(StockUniverse.peers_synced),
-            active_with_prices_synced=await ac(StockUniverse.prices_synced),
-            active_with_actions_synced=await ac(StockUniverse.actions_synced),
-            active_with_earnings_synced=await ac(StockUniverse.earnings_synced),
-            active_with_insider_synced=await ac(StockUniverse.insider_synced),
-            active_with_estimates_synced=await ac(StockUniverse.estimates_synced),
-            active_with_filings_synced=await ac(StockUniverse.filings_synced),
-            # Phase 6 — premium datasets
-            active_with_float_synced=await ac(StockUniverse.float_synced),
-            active_with_market_cap_synced=await ac(StockUniverse.market_cap_synced),
-            active_with_dcf_synced=await ac(StockUniverse.dcf_synced),
+            active_symbols=active_count,
+            inactive_symbols=inactive_count,
+            active_with_income_synced=int(row[1] or 0),
+            active_with_balance_synced=int(row[2] or 0),
+            active_with_cashflow_synced=int(row[3] or 0),
+            active_with_ratios_synced=int(row[4] or 0),
+            active_with_metrics_synced=int(row[5] or 0),
+            active_with_scores_synced=int(row[6] or 0),
+            active_with_ev_synced=int(row[7] or 0),
+            active_with_compensation_synced=int(row[8] or 0),
+            active_with_segments_synced=int(row[9] or 0),
+            active_with_peers_synced=int(row[10] or 0),
+            active_with_prices_synced=int(row[11] or 0),
+            active_with_actions_synced=int(row[12] or 0),
+            active_with_earnings_synced=int(row[13] or 0),
+            active_with_insider_synced=int(row[14] or 0),
+            active_with_estimates_synced=int(row[15] or 0),
+            active_with_filings_synced=int(row[16] or 0),
+            active_with_float_synced=int(row[17] or 0),
+            active_with_market_cap_synced=int(row[18] or 0),
+            active_with_dcf_synced=int(row[19] or 0),
         )
 
 
@@ -257,6 +282,7 @@ async def list_universe(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     symbol_prefix: str | None = Query(None, description="Optional ILIKE prefix, e.g. A"),
+    sector: str | None = Query(None, description="Filter by sector name"),
 ) -> UniverseListResponse:
     async with async_session_factory() as session:
         base = select(StockUniverse)
@@ -268,6 +294,9 @@ async def list_universe(
             pat = f"{symbol_prefix}%"
             base = base.where(StockUniverse.symbol.ilike(pat))
             count_stmt = count_stmt.where(StockUniverse.symbol.ilike(pat))
+        if sector:
+            base = base.where(StockUniverse.sector == sector)
+            count_stmt = count_stmt.where(StockUniverse.sector == sector)
 
         total = await session.scalar(count_stmt)
         total = int(total or 0)
@@ -481,6 +510,117 @@ async def get_macro_series_data(
         for r in mrows
     ]
     return MacroSeriesDataResponse(series_id=sid, rows=len(items), items=items)
+
+
+# =============================================================================
+# Yield Curve (treasury_rates_wide)
+# =============================================================================
+
+_TENOR_COLUMNS = [
+    ("1M", TreasuryRateWide.month1),
+    ("2M", TreasuryRateWide.month2),
+    ("3M", TreasuryRateWide.month3),
+    ("6M", TreasuryRateWide.month6),
+    ("1Y", TreasuryRateWide.year1),
+    ("2Y", TreasuryRateWide.year2),
+    ("3Y", TreasuryRateWide.year3),
+    ("5Y", TreasuryRateWide.year5),
+    ("7Y", TreasuryRateWide.year7),
+    ("10Y", TreasuryRateWide.year10),
+    ("20Y", TreasuryRateWide.year20),
+    ("30Y", TreasuryRateWide.year30),
+]
+
+_TENOR_MAP = {t[0]: t[1] for t in _TENOR_COLUMNS}
+
+
+def _row_to_curves(row) -> list[YieldCurvePoint]:
+    return [
+        YieldCurvePoint(tenor=tenor, yield_rate=float(getattr(row, col.name)))
+        for tenor, col in _TENOR_COLUMNS
+        if getattr(row, col.name) is not None
+    ]
+
+
+@router.get(
+    "/data/yield-curve",
+    response_model=YieldCurveResponse,
+    summary="Latest yield curve from treasury_rates_wide",
+)
+async def yield_curve() -> YieldCurveResponse:
+    async with async_session_factory() as session:
+        row = (
+            await session.scalars(
+                select(TreasuryRateWide)
+                .order_by(TreasuryRateWide.date.desc())
+                .limit(1)
+            )
+        ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="No treasury rate data available")
+    return YieldCurveResponse(date=row.date, curves=_row_to_curves(row))
+
+
+@router.get(
+    "/data/yield-curve/history",
+    response_model=YieldCurveHistoryResponse,
+    summary="Historical yield curves",
+)
+async def yield_curve_history(
+    date: str | None = Query(None, description="Start date (YYYY-MM-DD), default 30 days ago"),
+) -> YieldCurveHistoryResponse:
+    start = datetime.strptime(date, "%Y-%m-%d").date() if date else (datetime.now(timezone.utc).date() - timedelta(days=30))
+    async with async_session_factory() as session:
+        rows = (
+            await session.scalars(
+                select(TreasuryRateWide)
+                .where(TreasuryRateWide.date >= start)
+                .order_by(TreasuryRateWide.date.asc())
+            )
+        ).all()
+    items = [
+        YieldCurveHistoryItem(date=r.date, curves=_row_to_curves(r))
+        for r in rows
+    ]
+    return YieldCurveHistoryResponse(items=items)
+
+
+@router.get(
+    "/data/yield-spread",
+    response_model=YieldSpreadResponse,
+    summary="Yield spread between two tenors over time",
+)
+async def yield_spread(
+    tenor1: str = Query("10Y", description="First tenor (e.g., 10Y)"),
+    tenor2: str = Query("2Y", description="Second tenor (e.g., 2Y)"),
+    days: int = Query(365, ge=7, le=2000),
+) -> YieldSpreadResponse:
+    t1_upper = tenor1.upper()
+    t2_upper = tenor2.upper()
+    col1 = _TENOR_MAP.get(t1_upper)
+    col2 = _TENOR_MAP.get(t2_upper)
+    if col1 is None or col2 is None:
+        raise HTTPException(status_code=400, detail=f"Invalid tenor. Valid: {list(_TENOR_MAP.keys())}")
+
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
+    async with async_session_factory() as session:
+        rows = (
+            await session.execute(
+                select(
+                    TreasuryRateWide.date,
+                    (col1 - col2).label("spread"),
+                )
+                .where(
+                    TreasuryRateWide.date >= cutoff,
+                    col1.is_not(None),
+                    col2.is_not(None),
+                )
+                .order_by(TreasuryRateWide.date.asc())
+            )
+        ).all()
+
+    items = [YieldSpreadPoint(date=r[0], spread=float(r[1])) for r in rows]
+    return YieldSpreadResponse(tenor1=t1_upper, tenor2=t2_upper, items=items)
 
 
 @router.get(
@@ -1138,9 +1278,9 @@ async def sector_performance(
     summary="Latest sector trends: 1D/1W/1M changes and avg PE",
 )
 async def sector_trends() -> SectorTrendsResponse:
+    """Optimized: batch queries instead of per-sector loops."""
     async with async_session_factory() as session:
         today = datetime.now(timezone.utc).date()
-        d1 = today - timedelta(days=1)
         d7 = today - timedelta(days=7)
         d30 = today - timedelta(days=30)
 
@@ -1153,80 +1293,78 @@ async def sector_trends() -> SectorTrendsResponse:
         if not latest_date:
             return SectorTrendsResponse(as_of_date=None, trends=[])
 
-        # Get all sectors
-        sector_rows = (
-            await session.execute(
-                select(
-                    SectorPerformanceSeries.sector,
-                    func.count(),
-                )
-                .where(SectorPerformanceSeries.metric == "return_pct")
-                .group_by(SectorPerformanceSeries.sector)
+        # Batch fetch: latest return per sector
+        latest_returns = {}
+        rows = (await session.execute(
+            select(SectorPerformanceSeries.sector, SectorPerformanceSeries.value)
+            .where(
+                SectorPerformanceSeries.metric == "return_pct",
+                SectorPerformanceSeries.date == latest_date,
             )
-        ).all()
-        all_sectors = [r[0] for r in sector_rows]
+        )).all()
+        for r in rows:
+            latest_returns[r[0]] = r[1]
 
+        # Batch fetch: closest return to 7 days ago per sector
+        w1_returns = {}
+        w1_rows = (await session.execute(
+            select(
+                SectorPerformanceSeries.sector,
+                SectorPerformanceSeries.value,
+            )
+            .where(
+                SectorPerformanceSeries.metric == "return_pct",
+                SectorPerformanceSeries.date <= d7,
+            )
+            .distinct_on(SectorPerformanceSeries.sector)
+            .order_by(SectorPerformanceSeries.sector, SectorPerformanceSeries.date.desc())
+        )).all()
+        for r in w1_rows:
+            w1_returns[r[0]] = r[1]
+
+        # Batch fetch: closest return to 30 days ago per sector
+        m1_returns = {}
+        m1_rows = (await session.execute(
+            select(
+                SectorPerformanceSeries.sector,
+                SectorPerformanceSeries.value,
+            )
+            .where(
+                SectorPerformanceSeries.metric == "return_pct",
+                SectorPerformanceSeries.date <= d30,
+            )
+            .distinct_on(SectorPerformanceSeries.sector)
+            .order_by(SectorPerformanceSeries.sector, SectorPerformanceSeries.date.desc())
+        )).all()
+        for r in m1_rows:
+            m1_returns[r[0]] = r[1]
+
+        # Batch fetch: latest PE per sector
+        pe_values = {}
+        pe_rows = (await session.execute(
+            select(SectorPerformanceSeries.sector, SectorPerformanceSeries.value)
+            .where(
+                SectorPerformanceSeries.metric == "pe_ratio",
+                SectorPerformanceSeries.date <= latest_date,
+            )
+            .distinct_on(SectorPerformanceSeries.sector)
+            .order_by(SectorPerformanceSeries.sector, SectorPerformanceSeries.date.desc())
+        )).all()
+        for r in pe_rows:
+            pe_values[r[0]] = r[1]
+
+        # Build trends
         trends: list[SectorTrendItem] = []
-        for sector in all_sectors:
-            # Get latest return
-            latest_row = await session.scalar(
-                select(SectorPerformanceSeries)
-                .where(
-                    SectorPerformanceSeries.sector == sector,
-                    SectorPerformanceSeries.metric == "return_pct",
-                    SectorPerformanceSeries.date <= latest_date,
-                )
-                .order_by(SectorPerformanceSeries.date.desc())
-                .limit(1)
-            )
-
-            # Get 1W ago return
-            w1_row = await session.scalar(
-                select(SectorPerformanceSeries)
-                .where(
-                    SectorPerformanceSeries.sector == sector,
-                    SectorPerformanceSeries.metric == "return_pct",
-                    SectorPerformanceSeries.date <= d7,
-                )
-                .order_by(SectorPerformanceSeries.date.desc())
-                .limit(1)
-            )
-
-            # Get 1M ago return
-            m1_row = await session.scalar(
-                select(SectorPerformanceSeries)
-                .where(
-                    SectorPerformanceSeries.sector == sector,
-                    SectorPerformanceSeries.metric == "return_pct",
-                    SectorPerformanceSeries.date <= d30,
-                )
-                .order_by(SectorPerformanceSeries.date.desc())
-                .limit(1)
-            )
-
-            # Get avg PE
-            pe_row = await session.scalar(
-                select(SectorPerformanceSeries)
-                .where(
-                    SectorPerformanceSeries.sector == sector,
-                    SectorPerformanceSeries.metric == "pe_ratio",
-                    SectorPerformanceSeries.date <= latest_date,
-                )
-                .order_by(SectorPerformanceSeries.date.desc())
-                .limit(1)
-            )
-
-            latest_val = latest_row.value if latest_row else None
-            w1_val = w1_row.value if w1_row else None
-            m1_val = m1_row.value if m1_row else None
-
+        for sector, latest_val in latest_returns.items():
+            w1_val = w1_returns.get(sector)
+            m1_val = m1_returns.get(sector)
             trends.append(
                 SectorTrendItem(
                     sector=sector,
                     change_1d=latest_val,
                     change_1w=(latest_val - w1_val) if latest_val is not None and w1_val is not None else None,
                     change_1m=(latest_val - m1_val) if latest_val is not None and m1_val is not None else None,
-                    avg_pe=pe_row.value if pe_row else None,
+                    avg_pe=pe_values.get(sector),
                 )
             )
 

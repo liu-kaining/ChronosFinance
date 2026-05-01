@@ -8,6 +8,7 @@ import {
   Layers,
   Bookmark,
   PieChart,
+  TrendingUp,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -23,17 +24,22 @@ interface NavItem {
 
 const PRIMARY: NavItem[] = [
   { to: "/", label: zh.nav.home, icon: <Compass size={16} />, end: true },
-  { to: "/watchlist", label: "我的自选", icon: <Bookmark size={16} /> },
+  { to: "/watchlist", label: zh.nav.watchlist, icon: <Bookmark size={16} /> },
 ];
 
 const GLOBAL: NavItem[] = [
   {
-    to: "/global/market-pulse",
-    label: zh.nav.marketPulse,
+    to: "/global/market",
+    label: zh.nav.market,
     icon: <LayoutDashboard size={16} />,
   },
   { to: "/global/macro", label: zh.nav.macro, icon: <LineChart size={16} /> },
   { to: "/global/events", label: zh.nav.events, icon: <CalendarClock size={16} /> },
+  {
+    to: "/global/sectors",
+    label: zh.nav.sectors,
+    icon: <PieChart size={16} />,
+  },
   {
     to: "/global/quality",
     label: zh.nav.dataQuality,

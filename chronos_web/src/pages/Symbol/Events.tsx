@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { buildDivergingScale, clampAbsMax, safePct } from "@/lib/chart-utils";
 import { EmptyDataState } from "@/components/ui/EmptyDataState";
 import { PageNarrative } from "@/components/ui/PageNarrative";
+import { SectionHeader } from "@/components/shared/SectionHeader";
 
 export function SymbolEvents() {
   const { symbol } = useParams<{ symbol: string }>();

@@ -411,3 +411,36 @@ class SectorSnapshotResponse(BaseModel):
     avg_change_1m: float | None = None
     total_market_cap: float | None = None
     constituents: list[SectorConstituent] = Field(default_factory=list)
+
+
+# =============================================================================
+# Yield Curve (treasury_rates_wide table)
+# =============================================================================
+class YieldCurvePoint(BaseModel):
+    tenor: str
+    yield_rate: float | None = None
+
+
+class YieldCurveResponse(BaseModel):
+    date: dt_date
+    curves: list[YieldCurvePoint] = Field(default_factory=list)
+
+
+class YieldCurveHistoryItem(BaseModel):
+    date: dt_date
+    curves: list[YieldCurvePoint] = Field(default_factory=list)
+
+
+class YieldCurveHistoryResponse(BaseModel):
+    items: list[YieldCurveHistoryItem] = Field(default_factory=list)
+
+
+class YieldSpreadPoint(BaseModel):
+    date: dt_date
+    spread: float | None = None
+
+
+class YieldSpreadResponse(BaseModel):
+    tenor1: str
+    tenor2: str
+    items: list[YieldSpreadPoint] = Field(default_factory=list)

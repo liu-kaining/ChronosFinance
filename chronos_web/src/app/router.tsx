@@ -3,19 +3,18 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { WelcomePage } from "@/pages/Welcome";
 import { SymbolLayout } from "@/pages/Symbol";
-import { EvidenceChainPage } from "@/pages/Symbol/EvidenceChain";
-import { SymbolOverview } from "@/pages/Symbol/Overview";
-import { SymbolChart } from "@/pages/Symbol/Chart";
+import { PriceActionPage } from "@/pages/Symbol/PriceAction";
 import { SymbolFinancials } from "@/pages/Symbol/Financials";
 import { SymbolEvents } from "@/pages/Symbol/Events";
-import { SymbolAnalyst } from "@/pages/Symbol/Analyst";
+import { ValuationPage } from "@/pages/Symbol/Valuation";
 import { SymbolPeers } from "@/pages/Symbol/Peers";
 import { SymbolSec } from "@/pages/Symbol/Sec";
 import { SymbolRaw } from "@/pages/Symbol/Raw";
 import { SectorDetailPage } from "@/pages/Sector";
+import { SectorOverviewPage } from "@/pages/Global/SectorOverview";
 import { WatchlistPage } from "@/pages/Watchlist";
 import { GlobalLayout } from "@/pages/Global";
-import { MarketPulsePage } from "@/pages/Global/MarketPulse";
+import { MarketOverviewPage } from "@/pages/Global/MarketOverview";
 import { MacroDashboardPage } from "@/pages/Global/MacroDashboard";
 import { EventStreamPage } from "@/pages/Global/EventStream";
 import { DataQualityPage } from "@/pages/Global/DataQuality";
@@ -35,12 +34,15 @@ export const router = createBrowserRouter([
         path: "global",
         element: <GlobalLayout />,
         children: [
-          { index: true, element: <Navigate to="market-pulse" replace /> },
-          { path: "market-pulse", element: <MarketPulsePage /> },
+          { index: true, element: <Navigate to="market" replace /> },
+          { path: "market", element: <MarketOverviewPage /> },
           { path: "macro", element: <MacroDashboardPage /> },
           { path: "events", element: <EventStreamPage /> },
+          { path: "sectors", element: <SectorOverviewPage /> },
           { path: "quality", element: <DataQualityPage /> },
           { path: "data-assets", element: <DataAssetsPage /> },
+          // Legacy redirects
+          { path: "market-pulse", element: <Navigate to="/global/market" replace /> },
         ],
       },
 
@@ -49,16 +51,19 @@ export const router = createBrowserRouter([
         path: "symbol/:symbol",
         element: <SymbolLayout />,
         children: [
-          { index: true, element: <Navigate to="evidence" replace /> },
-          { path: "evidence", element: <EvidenceChainPage /> },
-          { path: "overview", element: <SymbolOverview /> },
-          { path: "chart", element: <SymbolChart /> },
+          { index: true, element: <Navigate to="price" replace /> },
+          { path: "price", element: <PriceActionPage /> },
           { path: "financials", element: <SymbolFinancials /> },
           { path: "events", element: <SymbolEvents /> },
-          { path: "analyst", element: <SymbolAnalyst /> },
+          { path: "valuation", element: <ValuationPage /> },
           { path: "peers", element: <SymbolPeers /> },
           { path: "sec", element: <SymbolSec /> },
           { path: "raw", element: <SymbolRaw /> },
+          // Legacy redirects
+          { path: "evidence", element: <Navigate to="price" replace /> },
+          { path: "overview", element: <Navigate to="price" replace /> },
+          { path: "chart", element: <Navigate to="price" replace /> },
+          { path: "analyst", element: <Navigate to="valuation" replace /> },
         ],
       },
 

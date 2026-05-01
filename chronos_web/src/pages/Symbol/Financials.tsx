@@ -18,6 +18,7 @@ import {
 } from "@/lib/financial-adapters";
 import { EmptyDataState } from "@/components/ui/EmptyDataState";
 import { PageNarrative } from "@/components/ui/PageNarrative";
+import { SectionHeader } from "@/components/shared/SectionHeader";
 
 const CATEGORIES = [
   { key: "income_statement_annual", label: "利润表（年）" },

@@ -92,6 +92,7 @@ class OpenAIProvider(LLMProvider):
             "model": self.model,
             "messages": api_messages,
             "stream": True,
+            "max_tokens": 4096,
         }
         if tools:
             kwargs["tools"] = self._convert_tools(tools)

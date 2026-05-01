@@ -91,9 +91,21 @@ class AnthropicProvider(LLMProvider):
         if tools:
             kwargs["tools"] = self._convert_tools(tools)
 
+        # Track block IDs by index for consistent tool_id usage
+        block_ids: dict[int, str] = {}
+
         async with self.client.messages.stream(**kwargs) as stream:
             async for event in stream:
-                if event.type == "content_block_delta":
+                if event.type == "content_block_start":
+                    block = event.content_block
+                    if hasattr(block, "type") and block.type == "tool_use":
+                        block_ids[event.index] = block.id
+                        yield StreamChunk(
+                            type="tool_use_start",
+                            tool_id=block.id,
+                            tool_name=block.name,
+                        )
+                elif event.type == "content_block_delta":
                     delta = event.delta
                     if hasattr(delta, "type"):
                         if delta.type == "text_delta":
@@ -101,16 +113,8 @@ class AnthropicProvider(LLMProvider):
                         elif delta.type == "input_json_delta":
                             yield StreamChunk(
                                 type="tool_use_input_delta",
-                                tool_id=event.index,  # type: ignore
+                                tool_id=block_ids.get(event.index, str(event.index)),
                                 tool_input_delta=delta.partial_json,
                             )
-                elif event.type == "content_block_start":
-                    block = event.content_block
-                    if hasattr(block, "type") and block.type == "tool_use":
-                        yield StreamChunk(
-                            type="tool_use_start",
-                            tool_id=block.id,  # type: ignore
-                            tool_name=block.name,  # type: ignore
-                        )
 
         yield StreamChunk(type="message_end")
