@@ -4,7 +4,7 @@
  */
 
 import ReactECharts from "echarts-for-react";
-import { COLORS, echartsBase, SERIES_PALETTE, toRgba } from "@/lib/theme";
+import { COLORS, echartsBase, toRgba } from "@/lib/theme";
 import { fmtNum } from "@/lib/format";
 
 interface YieldPoint {

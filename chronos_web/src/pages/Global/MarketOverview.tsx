@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { TrendingUp, TrendingDown, BarChart3, RefreshCcw } from "lucide-react";
+import { RefreshCcw } from "lucide-react";
 
 import { api, endpoints } from "@/lib/api";
 import type { MarketSnapshotResponse, SectorTrendsResponse, SectorSnapshotResponse } from "@/lib/types";

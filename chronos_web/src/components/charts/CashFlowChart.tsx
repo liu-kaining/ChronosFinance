@@ -4,7 +4,7 @@
  */
 
 import ReactECharts from "echarts-for-react";
-import { COLORS, echartsBase, SERIES_PALETTE } from "@/lib/theme";
+import { COLORS, echartsBase } from "@/lib/theme";
 import { fmtCap, fmtDay } from "@/lib/format";
 
 interface CashFlowData {

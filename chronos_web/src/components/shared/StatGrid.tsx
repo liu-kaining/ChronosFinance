@@ -1,10 +1,11 @@
 import { ReactNode } from "react";
+import { cn } from "../../lib/cn";
 
 interface StatItem {
   label: string;
   value: ReactNode;
   hint?: string;
-  color?: "green" | "red" | "yellow" | "blue" | "gray";
+  color?: "up" | "down" | "warn" | "accent" | "default";
 }
 
 interface StatGridProps {
@@ -13,11 +14,11 @@ interface StatGridProps {
 }
 
 const colorMap = {
-  green: "text-emerald-400",
-  red: "text-red-400",
-  yellow: "text-yellow-400",
-  blue: "text-blue-400",
-  gray: "text-gray-300",
+  up: "text-up",
+  down: "text-down",
+  warn: "text-warn",
+  accent: "text-accent",
+  default: "text-text-primary",
 };
 
 export function StatGrid({ items, columns = 4 }: StatGridProps) {
@@ -28,14 +29,24 @@ export function StatGrid({ items, columns = 4 }: StatGridProps) {
   };
 
   return (
-    <div className={`grid ${gridCols[columns]} gap-3`}>
+    <div className={cn("grid gap-3", gridCols[columns])}>
       {items.map((item, i) => (
-        <div key={i} className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
-          <div className="text-xs text-gray-400 mb-1">{item.label}</div>
-          <div className={`text-lg font-semibold ${item.color ? colorMap[item.color] : "text-gray-100"}`}>
+        <div
+          key={i}
+          className="rounded-lg border border-border-soft bg-bg-2/50 p-3"
+        >
+          <div className="text-2xs text-text-tertiary">{item.label}</div>
+          <div
+            className={cn(
+              "mt-1 text-lg font-semibold",
+              item.color ? colorMap[item.color] : "text-text-primary",
+            )}
+          >
             {item.value}
           </div>
-          {item.hint && <div className="text-xs text-gray-500 mt-0.5">{item.hint}</div>}
+          {item.hint && (
+            <div className="mt-0.5 text-2xs text-text-tertiary">{item.hint}</div>
+          )}
         </div>
       ))}
     </div>
